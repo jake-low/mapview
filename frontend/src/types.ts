@@ -73,6 +73,13 @@ export type MapState = {
 
 export type AppState = URLState & MapState;
 
+export type LayerGroup = {
+  name: string;
+  layerIds: string[];
+  color: string;
+};
+
 export type MapInitResult = {
   map: import("maplibre-gl").Map;
+  legendData?: LayerGroup[];
 };

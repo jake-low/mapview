@@ -3,7 +3,14 @@ import type { GeoJSON } from "geojson";
 import maplibre, { type ExpressionSpecification, type Map as MaplibreMap } from "maplibre-gl";
 import { PMTiles, Protocol } from "pmtiles";
 import { setupFeatureHighlighting, setupHoverPopup } from "./popups.tsx";
-import type { FileInfo, MapInitResult, PMTilesMetadata, StyleJSON, TileJSON } from "./types.ts";
+import type {
+  FileInfo,
+  LayerGroup,
+  MapInitResult,
+  PMTilesMetadata,
+  StyleJSON,
+  TileJSON,
+} from "./types.ts";
 
 const TEXT_FONT = ["Noto Sans"];
 const TEXT_HALO_COLOR = "#000b16";
@@ -122,7 +129,7 @@ export function createVectorLayers(
   map: MaplibreMap,
   sourceName: string,
   layerNames: string[],
-): { layerIds: string[]; layerColors: Map<string, string> } {
+): { layerIds: string[]; layerColors: Map<string, string>; legend: LayerGroup[] } {
   const layerColors = new Map<string, string>(
     layerNames.map((name, i) => [name, LAYER_COLORS[i % LAYER_COLORS.length]]),
   );
@@ -233,11 +240,17 @@ export function createVectorLayers(
     });
   }
 
-  const layerIds = layerNames.flatMap((name) =>
-    VECTOR_LAYER_SUFFIXES.map((suffix) => `${name}_${suffix}`),
-  );
+  const legend = layerNames.map((name) => ({
+    name,
+    layerIds: VECTOR_LAYER_SUFFIXES.map((suffix) => `${name}_${suffix}`),
+    color: layerColors.get(name)!,
+  }));
 
-  return { layerIds, layerColors };
+  return {
+    layerIds: legend.flatMap((group) => group.layerIds),
+    layerColors,
+    legend,
+  };
 }
 
 export async function initializeStyleMap(
@@ -404,11 +417,18 @@ function initializeTileMap(
 
   return new Promise((resolve) => {
     map.on("load", () => {
+      let legendData: LayerGroup[] | undefined;
+
       if (config.isRaster) {
         setupMapInteractions(map);
       } else {
-        const { layerIds, layerColors } = createVectorLayers(map, "tiles", config.layerNames);
+        const { layerIds, layerColors, legend } = createVectorLayers(
+          map,
+          "tiles",
+          config.layerNames,
+        );
         setupMapInteractions(map, { layers: layerIds, layerColors, enableHighlighting: true });
+        legendData = legend;
       }
 
       if (!hasHashInUrl() && config.bounds) {
@@ -425,7 +445,7 @@ function initializeTileMap(
         );
       }
 
-      resolve({ map });
+      resolve({ map, legendData });
     });
   });
 }

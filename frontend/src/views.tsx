@@ -1,8 +1,9 @@
 import type { Context, Element } from "@b9g/crank";
 import type { Map as MaplibreMap } from "maplibre-gl";
 import { Hash } from "maplibre-gl";
+import { Legend } from "./legend.tsx";
 import { initializeMapFromFileInfo } from "./map.ts";
-import type { FileInfo, MapState, ViewMode } from "./types.ts";
+import type { FileInfo, LayerGroup, MapState, ViewMode } from "./types.ts";
 
 export function getDefaultViewMode(fileCount: number): ViewMode {
   if (fileCount === 1) return "single";
@@ -141,6 +142,7 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
   );
 
   const maps: MaplibreMap[] = [];
+  const legendData: (LayerGroup[] | undefined)[] = [];
   const previous = {
     mode: null as ViewMode | null,
     indices: [] as number[],
@@ -161,6 +163,7 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
         enablePitch,
       });
       maps.push(result.map);
+      legendData.push(result.legendData);
 
       // The URL hash and toolbar position info are bound to the state of the first
       // map, even if that map is not on screen. This works because all maps are always
@@ -191,6 +194,9 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
         }
       }
     }
+
+    // Trigger initial refresh to render legends
+    this.refresh();
 
     for (const map of maps) {
       applySettings(map, { showTileBoundaries, showCollisionBoxes, enableRotation, enablePitch });
@@ -306,6 +312,9 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
                           </option>
                         ))}
                       </select>
+                    )}
+                    {legendData[i] && maps[i] && (
+                      <Legend map={maps[i]} layerGroups={legendData[i]!} />
                     )}
                   </div>
                 )}
