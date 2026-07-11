@@ -6,6 +6,7 @@ export function setupContextMenu(
   options?: {
     setPopupEnabled?: (enabled: boolean) => void;
     onMeasureDistance?: () => void;
+    onCopyGeoJSON?: (features: any[]) => void;
   },
 ): () => void {
   let menuElement: HTMLDivElement | null = null;
@@ -69,6 +70,26 @@ export function setupContextMenu(
         options.onMeasureDistance?.();
       };
       menuElement.appendChild(measureItem);
+    }
+
+    if (options?.onCopyGeoJSON) {
+      const tolerance = 5;
+      const bbox: [[number, number], [number, number]] = [
+        [e.offsetX - tolerance, e.offsetY - tolerance],
+        [e.offsetX + tolerance, e.offsetY + tolerance],
+      ];
+      const features = map.queryRenderedFeatures(bbox);
+
+      if (features.length > 0) {
+        const copyGeoJSONItem = document.createElement("div");
+        copyGeoJSONItem.className = "context-menu-item";
+        copyGeoJSONItem.textContent = "Copy as GeoJSON";
+        copyGeoJSONItem.onclick = () => {
+          hideMenu();
+          options.onCopyGeoJSON?.(features);
+        };
+        menuElement.appendChild(copyGeoJSONItem);
+      }
     }
 
     document.body.appendChild(menuElement);

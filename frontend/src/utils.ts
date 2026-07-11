@@ -1,3 +1,4 @@
+import type { MapGeoJSONFeature } from "maplibre-gl";
 import { type FileInfo, type FileKind, VALID_GEOJSON_TYPES } from "./types.ts";
 
 /*
@@ -17,6 +18,23 @@ export function getCoordinatePrecision(zoom: number, lat: number): number {
   const decimalPlaces = Math.max(0, Math.ceil(-Math.log10(degreesPerPixel)));
 
   return Math.min(decimalPlaces, 8); // Cap at 8 decimal places
+}
+
+export async function copyFeaturesAsGeoJSON(features: MapGeoJSONFeature[]): Promise<void> {
+  const featureCollection = {
+    type: "FeatureCollection" as const,
+    features: features.map((f) => ({
+      type: "Feature" as const,
+      geometry: f.geometry,
+      properties: f.properties,
+    })),
+  };
+
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(featureCollection, null, 2));
+  } catch (err) {
+    console.error("Failed to copy to clipboard:", err);
+  }
 }
 
 export function detectJSONType(data: unknown): FileKind {

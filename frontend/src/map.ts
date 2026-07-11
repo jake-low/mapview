@@ -15,6 +15,7 @@ import type {
   StyleJSON,
   TileJSON,
 } from "./types.ts";
+import { copyFeaturesAsGeoJSON } from "./utils.ts";
 
 const TEXT_FONT = ["Noto Sans"];
 const TEXT_HALO_COLOR = "#000b16";
@@ -127,6 +128,7 @@ function setupMapInteractions(
   setupContextMenu(map, {
     setPopupEnabled,
     onMeasureDistance: () => measurementTool.toggle(),
+    onCopyGeoJSON: copyFeaturesAsGeoJSON,
   });
 }
 
