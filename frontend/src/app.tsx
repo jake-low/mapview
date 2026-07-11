@@ -8,11 +8,19 @@ function Toolbar({
   state,
   fileInfos,
   onModeChange,
+  onSettingChange,
   onSelectedIndexChange,
 }: {
   state: AppState;
   fileInfos: FileInfo[];
   onModeChange: (mode: ViewMode) => void;
+  onSettingChange: (
+    key: keyof Pick<
+      AppState,
+      "showTileBoundaries" | "showCollisionBoxes" | "enableRotation" | "enablePitch"
+    >,
+    value: boolean,
+  ) => void;
   onSelectedIndexChange: (position: number, index: number) => void;
 }): Element {
   const showModePicker = fileInfos.length > 1;
@@ -78,6 +86,54 @@ function Toolbar({
             );
           })()}
       </div>
+
+      <div class="toolbar-right">
+        <details>
+          <summary>Settings</summary>
+          <div>
+            <label>
+              <input
+                type="checkbox"
+                checked={state.showTileBoundaries}
+                onchange={(e: Event) =>
+                  onSettingChange("showTileBoundaries", (e.target as HTMLInputElement).checked)
+                }
+              />
+              Tile boundaries
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={state.showCollisionBoxes}
+                onchange={(e: Event) =>
+                  onSettingChange("showCollisionBoxes", (e.target as HTMLInputElement).checked)
+                }
+              />
+              Collision boxes
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={state.enableRotation}
+                onchange={(e: Event) =>
+                  onSettingChange("enableRotation", (e.target as HTMLInputElement).checked)
+                }
+              />
+              Rotation
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={state.enablePitch}
+                onchange={(e: Event) =>
+                  onSettingChange("enablePitch", (e.target as HTMLInputElement).checked)
+                }
+              />
+              Pitch
+            </label>
+          </div>
+        </details>
+      </div>
     </div>
   );
 }
@@ -132,6 +188,10 @@ async function* App(this: Context): AsyncGenerator<Element> {
     return {
       mode,
       selectedIndices,
+      showTileBoundaries: params.get("tileBoundaries") === "true",
+      showCollisionBoxes: params.get("collisionBoxes") === "true",
+      enableRotation: params.get("rotation") === "true",
+      enablePitch: params.get("pitch") === "true",
       camera,
       bounds,
     };
@@ -148,12 +208,43 @@ async function* App(this: Context): AsyncGenerator<Element> {
       params.set("indices", updates.selectedIndices.join(","));
     }
 
+    if (updates.showTileBoundaries !== undefined) {
+      updates.showTileBoundaries
+        ? params.set("tileBoundaries", "true")
+        : params.delete("tileBoundaries");
+    }
+
+    if (updates.showCollisionBoxes !== undefined) {
+      updates.showCollisionBoxes
+        ? params.set("collisionBoxes", "true")
+        : params.delete("collisionBoxes");
+    }
+
+    if (updates.enableRotation !== undefined) {
+      updates.enableRotation ? params.set("rotation", "true") : params.delete("rotation");
+    }
+
+    if (updates.enablePitch !== undefined) {
+      updates.enablePitch ? params.set("pitch", "true") : params.delete("pitch");
+    }
+
     const newURL = `${window.location.pathname}?${params}${window.location.hash}`;
     window.history.replaceState({}, "", newURL);
   };
 
   const onModeChange = (mode: ViewMode) => {
     updateURL({ mode });
+    this.refresh();
+  };
+
+  const onSettingChange = (
+    key: keyof Pick<
+      AppState,
+      "showTileBoundaries" | "showCollisionBoxes" | "enableRotation" | "enablePitch"
+    >,
+    value: boolean,
+  ) => {
+    updateURL({ [key]: value });
     this.refresh();
   };
 
@@ -192,6 +283,7 @@ async function* App(this: Context): AsyncGenerator<Element> {
           state={state}
           fileInfos={allFileInfos}
           onModeChange={onModeChange}
+          onSettingChange={onSettingChange}
           onSelectedIndexChange={onSelectedIndexChange}
         />
         <main class={state.mode}>
@@ -201,6 +293,10 @@ async function* App(this: Context): AsyncGenerator<Element> {
             selectedIndices={state.selectedIndices.slice(0, numMaps)}
             onIndexChange={onSelectedIndexChange}
             onMapMove={onMapMove}
+            showTileBoundaries={state.showTileBoundaries}
+            showCollisionBoxes={state.showCollisionBoxes}
+            enableRotation={state.enableRotation}
+            enablePitch={state.enablePitch}
           />
         </main>
       </Fragment>

@@ -52,6 +52,10 @@ export type ViewMode = "single" | "swipe" | "tile";
 export type URLState = {
   mode: ViewMode;
   selectedIndices: number[];
+  showTileBoundaries: boolean;
+  showCollisionBoxes: boolean;
+  enableRotation: boolean;
+  enablePitch: boolean;
 };
 
 export type MapCamera = {

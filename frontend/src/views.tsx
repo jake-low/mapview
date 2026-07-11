@@ -10,13 +10,47 @@ export function getDefaultViewMode(fileCount: number): ViewMode {
   return "tile";
 }
 
+type MapSettings = {
+  showTileBoundaries: boolean;
+  showCollisionBoxes: boolean;
+  enableRotation: boolean;
+  enablePitch: boolean;
+};
+
 type MapViewProps = {
   mode: ViewMode;
   allFileInfos: FileInfo[];
   selectedIndices: number[];
   onIndexChange: (position: number, index: number) => void;
   onMapMove?: (state: MapState) => void;
+  showTileBoundaries: boolean;
+  showCollisionBoxes: boolean;
+  enableRotation: boolean;
+  enablePitch: boolean;
 };
+
+function applySettings(map: MaplibreMap, settings: MapSettings) {
+  map.showTileBoundaries = settings.showTileBoundaries;
+  map.showCollisionBoxes = settings.showCollisionBoxes;
+
+  if (settings.enableRotation) {
+    map.dragRotate.enable();
+    map.touchZoomRotate.enableRotation();
+    map.keyboard.enableRotation();
+  } else {
+    map.dragRotate.disable();
+    map.touchZoomRotate.disableRotation();
+    map.keyboard.disableRotation();
+    map.setBearing(0);
+  }
+
+  if (settings.enablePitch) {
+    map.setMaxPitch(85);
+  } else {
+    map.setMaxPitch(0);
+    map.setPitch(0);
+  }
+}
 
 function updateSwipeClip(position: number, selectedIndices: number[]) {
   if (selectedIndices.length !== 2) return;
@@ -84,7 +118,14 @@ function setupSwipeControl(selectedIndices: number[]) {
 }
 
 export async function* MapView(this: Context, props: MapViewProps): AsyncGenerator<Element> {
-  const { allFileInfos, onMapMove } = props;
+  const {
+    allFileInfos,
+    onMapMove,
+    showTileBoundaries,
+    showCollisionBoxes,
+    enableRotation,
+    enablePitch,
+  } = props;
 
   this.schedule(() => this.refresh());
 
@@ -103,6 +144,7 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
   const previous = {
     mode: null as ViewMode | null,
     indices: [] as number[],
+    settings: { showTileBoundaries, showCollisionBoxes, enableRotation, enablePitch },
   };
   let swipeCleanup = null as (() => void) | null;
 
@@ -114,7 +156,10 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
         throw new Error(`Map container map-${i} not found`);
       }
 
-      const result = await initializeMapFromFileInfo(container, allFileInfos[i]);
+      const result = await initializeMapFromFileInfo(container, allFileInfos[i], {
+        enableRotation,
+        enablePitch,
+      });
       maps.push(result.map);
 
       // The URL hash and toolbar position info are bound to the state of the first
@@ -147,6 +192,10 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
       }
     }
 
+    for (const map of maps) {
+      applySettings(map, { showTileBoundaries, showCollisionBoxes, enableRotation, enablePitch });
+    }
+
     // Sync all maps
     let syncInProgress = false;
     for (const [index, map] of maps.entries()) {
@@ -172,7 +221,15 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
 
   try {
     for (const nextProps of this) {
-      const { mode, selectedIndices, onIndexChange } = nextProps;
+      const {
+        mode,
+        selectedIndices,
+        onIndexChange,
+        showTileBoundaries,
+        showCollisionBoxes,
+        enableRotation,
+        enablePitch,
+      } = nextProps;
 
       // Update swipe mode when mode or selection changes
       if (
@@ -199,6 +256,24 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
 
         previous.mode = mode;
         previous.indices = [...selectedIndices];
+      }
+
+      // Apply settings when they change
+      if (
+        showTileBoundaries !== previous.settings.showTileBoundaries ||
+        showCollisionBoxes !== previous.settings.showCollisionBoxes ||
+        enableRotation !== previous.settings.enableRotation ||
+        enablePitch !== previous.settings.enablePitch
+      ) {
+        for (const map of maps) {
+          applySettings(map, {
+            showTileBoundaries,
+            showCollisionBoxes,
+            enableRotation,
+            enablePitch,
+          });
+        }
+        previous.settings = { showTileBoundaries, showCollisionBoxes, enableRotation, enablePitch };
       }
 
       // Yield the same JSX structure to keep map containers stable
