@@ -1,3 +1,4 @@
+import { gpx, kml } from "@tmcw/togeojson";
 import type { MapGeoJSONFeature } from "maplibre-gl";
 import * as shapefile from "shapefile";
 import { type FileInfo, type FileKind, VALID_GEOJSON_TYPES } from "./types.ts";
@@ -110,6 +111,14 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
 
       data = await shapefile.read(shpBuffer, dbfBuffer);
       kind = "shapefile";
+      break;
+    }
+    case "gpx":
+    case "kml": {
+      const res = await fetch(url);
+      const doc = new DOMParser().parseFromString(await res.text(), "text/xml");
+      data = extension === "gpx" ? gpx(doc) : kml(doc);
+      kind = "geojson";
       break;
     }
     case "pmtiles":

@@ -262,7 +262,7 @@ async fn files(filename: &str, config: &State<Config>) -> Result<SeekStream<'sta
 #[derive(Parser)]
 #[command(
     version,
-    about = "View geospatial data files in your web browser\n\nSupported formats: GeoJSON, TileJSON, StyleJSON, PMTiles, MBTiles, Shapefile"
+    about = "View geospatial data files in your web browser\n\nSupported formats: GeoJSON, TileJSON, StyleJSON, PMTiles, MBTiles, GPX, KML, Shapefile"
 )]
 pub struct CliArgs {
     /// Files to view (if none provided, reads from stdin)
