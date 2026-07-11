@@ -4,6 +4,7 @@ import maplibre, { type ExpressionSpecification, type Map as MaplibreMap } from 
 import { PMTiles, Protocol } from "pmtiles";
 import { basemaps, setupBasemapSwitcher } from "./basemap.ts";
 import { setupFeatureHighlighting, setupHoverPopup } from "./popups.tsx";
+import { setupStatsWidget } from "./stats.ts";
 import type {
   FileInfo,
   LayerGroup,
@@ -377,6 +378,7 @@ export async function initializeGeoJSONMap(
       const layers = ["geojson-fill", "geojson-line", "geojson-point"];
       setupMapInteractions(map, { layers, enableHighlighting: true });
       setupBasemapSwitcher(map, container);
+      setupStatsWidget(container, geojson);
       resolve({ map });
     });
   });
