@@ -232,3 +232,53 @@ export function setupHoverPopup(
     map.getCanvas().style.cursor = "";
   });
 }
+
+export function setupFeatureHighlighting(
+  map: MaplibreMap,
+  options: {
+    layers?: string[];
+  } = {},
+): void {
+  let hoveredFeatures: Array<{ source: string; sourceLayer?: string; id: string | number }> = [];
+
+  const clearHoverStates = () => {
+    for (const feature of hoveredFeatures) {
+      map.removeFeatureState(
+        { source: feature.source, sourceLayer: feature.sourceLayer, id: feature.id },
+        "hover",
+      );
+    }
+    hoveredFeatures = [];
+  };
+
+  map.on("mousemove", (e: MapMouseEvent) => {
+    const tolerance = 5;
+    const bbox: [[number, number], [number, number]] = [
+      [e.point.x - tolerance, e.point.y - tolerance],
+      [e.point.x + tolerance, e.point.y + tolerance],
+    ];
+
+    const queryOptions = options.layers ? { layers: options.layers } : undefined;
+    const features = map.queryRenderedFeatures(bbox, queryOptions);
+
+    clearHoverStates();
+
+    for (const feature of features) {
+      if (feature.id !== undefined && feature.source) {
+        map.setFeatureState(
+          { source: feature.source, sourceLayer: feature.sourceLayer, id: feature.id },
+          { hover: true },
+        );
+        hoveredFeatures.push({
+          source: feature.source,
+          sourceLayer: feature.sourceLayer,
+          id: feature.id,
+        });
+      }
+    }
+  });
+
+  map.on("mouseout", () => {
+    clearHoverStates();
+  });
+}

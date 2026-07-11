@@ -1,8 +1,8 @@
 import * as turf from "@turf/turf";
 import type { GeoJSON } from "geojson";
-import maplibre, { type Map as MaplibreMap } from "maplibre-gl";
+import maplibre, { type ExpressionSpecification, type Map as MaplibreMap } from "maplibre-gl";
 import { PMTiles, Protocol } from "pmtiles";
-import { setupHoverPopup } from "./popups.tsx";
+import { setupFeatureHighlighting, setupHoverPopup } from "./popups.tsx";
 import type { FileInfo, MapInitResult, PMTilesMetadata, StyleJSON, TileJSON } from "./types.ts";
 
 const TEXT_FONT = ["Noto Sans"];
@@ -32,6 +32,10 @@ type MapSettings = {
   enableRotation?: boolean;
   enablePitch?: boolean;
 };
+
+function hoverable(hovered: number, normal: number): ExpressionSpecification {
+  return ["case", ["boolean", ["feature-state", "hover"], false], hovered, normal];
+}
 
 function labelPaint(color: string) {
   return {
@@ -96,9 +100,13 @@ function setupMapInteractions(
     showLayers?: boolean;
     layers?: string[];
     layerColors?: Map<string, string>;
+    enableHighlighting?: boolean;
   },
 ): void {
   setupHoverPopup(map, options || {});
+  if (options?.enableHighlighting && options.layers) {
+    setupFeatureHighlighting(map, { layers: options.layers });
+  }
 }
 
 const VECTOR_LAYER_SUFFIXES = [
@@ -131,7 +139,7 @@ export function createVectorLayers(
       filter: ["==", ["geometry-type"], "Polygon"],
       paint: {
         "fill-color": color,
-        "fill-opacity": 0.15,
+        "fill-opacity": hoverable(0.3, 0.15),
         "fill-outline-color": color,
       },
     });
@@ -147,7 +155,7 @@ export function createVectorLayers(
       filter: ["==", ["geometry-type"], "LineString"],
       paint: {
         "line-color": color,
-        "line-width": 0.5,
+        "line-width": hoverable(2, 0.5),
       },
     });
   }
@@ -165,7 +173,7 @@ export function createVectorLayers(
         "circle-radius": 2,
         "circle-opacity": 0.8,
         "circle-stroke-color": "#fff",
-        "circle-stroke-width": 0,
+        "circle-stroke-width": hoverable(2, 0),
       },
     });
   }
@@ -304,6 +312,9 @@ export async function initializeGeoJSONMap(
       map.addSource("geojson-data", {
         type: "geojson",
         data: geojson,
+        // assign ids to features that lack them; hover highlighting tracks
+        // features through feature-state, which requires ids
+        generateId: true,
       });
 
       map.addLayer({
@@ -313,7 +324,7 @@ export async function initializeGeoJSONMap(
         filter: ["==", ["geometry-type"], "Polygon"],
         paint: {
           "fill-color": "#088",
-          "fill-opacity": 0.4,
+          "fill-opacity": hoverable(0.6, 0.4),
         },
       });
 
@@ -324,7 +335,7 @@ export async function initializeGeoJSONMap(
         filter: ["==", ["geometry-type"], "LineString"],
         paint: {
           "line-color": "#088",
-          "line-width": 2,
+          "line-width": hoverable(4, 2),
         },
       });
 
@@ -338,12 +349,12 @@ export async function initializeGeoJSONMap(
           "circle-radius": 6,
           "circle-opacity": 1,
           "circle-stroke-color": "#fff",
-          "circle-stroke-width": 2,
+          "circle-stroke-width": hoverable(3, 2),
         },
       });
 
       const layers = ["geojson-fill", "geojson-line", "geojson-point"];
-      setupMapInteractions(map, { layers });
+      setupMapInteractions(map, { layers, enableHighlighting: true });
       resolve({ map });
     });
   });
@@ -397,7 +408,7 @@ function initializeTileMap(
         setupMapInteractions(map);
       } else {
         const { layerIds, layerColors } = createVectorLayers(map, "tiles", config.layerNames);
-        setupMapInteractions(map, { layers: layerIds, layerColors });
+        setupMapInteractions(map, { layers: layerIds, layerColors, enableHighlighting: true });
       }
 
       if (!hasHashInUrl() && config.bounds) {
