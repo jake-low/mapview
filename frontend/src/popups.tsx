@@ -255,8 +255,9 @@ export function setupFeatureHighlighting(
   options: {
     layers?: string[];
   } = {},
-): void {
+): { setEnabled: (enabled: boolean) => void } {
   let hoveredFeatures: Array<{ source: string; sourceLayer?: string; id: string | number }> = [];
+  let isEnabled = true;
 
   const clearHoverStates = () => {
     for (const feature of hoveredFeatures) {
@@ -268,7 +269,16 @@ export function setupFeatureHighlighting(
     hoveredFeatures = [];
   };
 
+  const setEnabled = (enabled: boolean) => {
+    isEnabled = enabled;
+    if (!enabled) {
+      clearHoverStates();
+    }
+  };
+
   map.on("mousemove", (e: MapMouseEvent) => {
+    if (!isEnabled) return;
+
     const tolerance = 5;
     const bbox: [[number, number], [number, number]] = [
       [e.point.x - tolerance, e.point.y - tolerance],
@@ -296,6 +306,9 @@ export function setupFeatureHighlighting(
   });
 
   map.on("mouseout", () => {
+    if (!isEnabled) return;
     clearHoverStates();
   });
+
+  return { setEnabled };
 }

@@ -5,15 +5,16 @@ export function setupContextMenu(
   map: MaplibreMap,
   options?: {
     setPopupEnabled?: (enabled: boolean) => void;
+    onMeasureDistance?: () => void;
   },
 ): () => void {
   let menuElement: HTMLDivElement | null = null;
 
-  const hideMenu = () => {
+  const hideMenu = (reEnablePopup: boolean = true) => {
     if (menuElement) {
       menuElement.remove();
       menuElement = null;
-      if (options?.setPopupEnabled) {
+      if (reEnablePopup && options?.setPopupEnabled) {
         options.setPopupEnabled(true);
       }
     }
@@ -58,6 +59,17 @@ export function setupContextMenu(
       }
     };
     menuElement.appendChild(coordItem);
+
+    if (options?.onMeasureDistance) {
+      const measureItem = document.createElement("div");
+      measureItem.className = "context-menu-item";
+      measureItem.textContent = "Measure distance";
+      measureItem.onclick = () => {
+        hideMenu(false);
+        options.onMeasureDistance?.();
+      };
+      menuElement.appendChild(measureItem);
+    }
 
     document.body.appendChild(menuElement);
   };

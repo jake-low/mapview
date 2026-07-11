@@ -4,6 +4,7 @@ import maplibre, { type ExpressionSpecification, type Map as MaplibreMap } from 
 import { PMTiles, Protocol } from "pmtiles";
 import { basemaps, setupBasemapSwitcher } from "./basemap.ts";
 import { setupContextMenu } from "./contextmenu.ts";
+import { setupMeasurementTool } from "./measurement.ts";
 import { setupFeatureHighlighting, setupHoverPopup } from "./popups.tsx";
 import { setupStatsWidget } from "./stats.ts";
 import type {
@@ -114,11 +115,19 @@ function setupMapInteractions(
   },
 ): void {
   const { setEnabled: setPopupEnabled } = setupHoverPopup(map, options || {});
-  if (options?.enableHighlighting && options.layers) {
-    setupFeatureHighlighting(map, { layers: options.layers });
-  }
+  const highlightingControl =
+    options?.enableHighlighting && options.layers
+      ? setupFeatureHighlighting(map, { layers: options.layers })
+      : null;
 
-  setupContextMenu(map, { setPopupEnabled });
+  const measurementTool = setupMeasurementTool(map, {
+    setPopupEnabled,
+    setHighlightEnabled: highlightingControl?.setEnabled,
+  });
+  setupContextMenu(map, {
+    setPopupEnabled,
+    onMeasureDistance: () => measurementTool.toggle(),
+  });
 }
 
 const VECTOR_LAYER_SUFFIXES = [
