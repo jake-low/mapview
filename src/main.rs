@@ -1,0 +1,386 @@
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::io::{self, Read};
+use std::net::TcpListener;
+use std::path::{Path, PathBuf};
+
+use anyhow::{self, Context, bail};
+use clap::Parser;
+use include_dir::{Dir, include_dir};
+
+use rocket::State;
+use rocket::http::ContentType;
+use rocket::response::content::{RawCss, RawHtml, RawJavaScript};
+use rocket_seek_stream::SeekStream;
+
+#[macro_use]
+extern crate rocket;
+
+mod mbtiles;
+
+static FONTS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/fonts/pbf");
+
+struct Config {
+    /// contents of files read from stdin, keyed by synthetic filename
+    files: HashMap<String, String>,
+    file_args: Vec<String>,
+    /// local file paths that may be served, verbatim as passed on the command line
+    local_files: HashSet<String>,
+    mbtiles_files: HashMap<String, mbtiles::MBTilesPool>,
+    port: u16,
+}
+
+#[get("/")]
+fn index() -> RawHtml<&'static str> {
+    let html = include_str!("../frontend/index.html");
+    RawHtml(html)
+}
+
+#[get("/style.css")]
+fn css() -> RawCss<&'static str> {
+    let css = include_str!("../frontend/dist/style.css");
+    RawCss(css)
+}
+
+#[get("/bundle.js")]
+fn bundle() -> RawJavaScript<&'static str> {
+    let js = include_str!("../frontend/dist/bundle.js");
+    RawJavaScript(js)
+}
+
+#[get("/bundle.js.map")]
+fn bundle_map() -> RawJavaScript<&'static str> {
+    let js = include_str!("../frontend/dist/bundle.js.map");
+    RawJavaScript(js)
+}
+
+#[derive(Responder)]
+struct FontGlyph {
+    content: &'static [u8],
+    content_type: ContentType,
+}
+
+#[get("/fonts/<fontstack>/<range>")]
+fn fonts(fontstack: &str, range: &str) -> Result<FontGlyph, NotFound> {
+    let path = format!("{}/{}", fontstack, range);
+
+    FONTS_DIR
+        .get_file(&path)
+        .map(|file| FontGlyph {
+            content: file.contents(),
+            content_type: ContentType::new("application", "x-protobuf"),
+        })
+        .ok_or_else(|| NotFound(format!("Font not found: {}", path)))
+}
+
+#[derive(Responder)]
+#[response(status = 404)]
+struct NotFound(String);
+
+#[derive(Responder)]
+struct TileResponse {
+    data: Vec<u8>,
+    content_type: ContentType,
+}
+
+impl TileResponse {
+    fn with_encoding(self, encoding: &'static str) -> TileResponseEncoded {
+        TileResponseEncoded {
+            inner: self,
+            encoding,
+        }
+    }
+}
+
+struct TileResponseEncoded {
+    inner: TileResponse,
+    encoding: &'static str,
+}
+
+impl<'r> rocket::response::Responder<'r, 'static> for TileResponseEncoded {
+    fn respond_to(self, req: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
+        use rocket::http::Header;
+        let mut response = self.inner.respond_to(req)?;
+        response.set_header(Header::new("Content-Encoding", self.encoding));
+        Ok(response)
+    }
+}
+
+/// Parse "123.png" or "123.pbf" etc into (y, extension)
+fn parse_y_and_ext(y_with_ext: &Path) -> Result<(u32, &str), NotFound> {
+    let y_str = y_with_ext
+        .to_str()
+        .ok_or_else(|| NotFound("Invalid path".to_string()))?;
+
+    let (y_part, ext) = y_str
+        .rsplit_once('.')
+        .ok_or_else(|| NotFound("Tile URL must have an extension".to_string()))?;
+
+    let y = y_part
+        .parse::<u32>()
+        .map_err(|_| NotFound("Invalid tile coordinate".to_string()))?;
+
+    Ok((y, ext))
+}
+
+fn content_type_for_ext(ext: &str) -> Result<ContentType, NotFound> {
+    match ext {
+        "png" => Ok(ContentType::PNG),
+        "jpg" | "jpeg" => Ok(ContentType::JPEG),
+        "webp" => Ok(ContentType::WEBP),
+        "pbf" => Ok(ContentType::new("application", "x-protobuf")),
+        _ => Err(NotFound(format!("Unsupported tile extension: {}", ext))),
+    }
+}
+
+async fn serve_mbtiles_tile(
+    pool: &mbtiles::MBTilesPool,
+    z: u8,
+    x: u32,
+    y: u32,
+    content_type: ContentType,
+) -> Result<TileResponseEncoded, NotFound> {
+    let pool = pool.clone();
+    let result = rocket::tokio::task::spawn_blocking(move || mbtiles::get_tile(&pool, z, x, y))
+        .await
+        .map_err(|e| NotFound(format!("Tile task panicked: {}", e)))?;
+    match result {
+        Ok(Some(data)) => {
+            // pbf tiles in MBTiles are usually gzip-compressed (per spec), but
+            // not always in practice, so sniff for the gzip magic bytes
+            let encoding = if data.starts_with(&[0x1f, 0x8b]) {
+                "gzip"
+            } else {
+                "identity"
+            };
+            Ok(TileResponse { data, content_type }.with_encoding(encoding))
+        }
+        Ok(None) => Err(NotFound("Tile not found".to_string())),
+        Err(e) => Err(NotFound(format!("Tile read failed: {}", e))),
+    }
+}
+
+async fn serve_mbtiles_metadata(
+    filename: &str,
+    pool: &mbtiles::MBTilesPool,
+    port: u16,
+) -> Result<rocket::serde::json::Json<serde_json::Value>, NotFound> {
+    let pool_cloned = pool.clone();
+    let metadata = rocket::tokio::task::spawn_blocking(move || mbtiles::get_metadata(&pool_cloned))
+        .await
+        .map_err(|e| NotFound(format!("Metadata task panicked: {}", e)))?
+        .map_err(|e| NotFound(format!("MBTiles metadata failed: {}", e)))?;
+
+    let tile_ext = match metadata.format.as_str() {
+        "pbf" => "pbf",
+        "jpg" | "jpeg" => "jpg",
+        "webp" => "webp",
+        _ => "png",
+    };
+    let tile_url = format!(
+        "http://localhost:{}/tiles/{}/{{z}}/{{x}}/{{y}}.{}",
+        port, filename, tile_ext
+    );
+
+    let mut tj = serde_json::json!({
+        "tilejson": "3.0.0",
+        "tiles": [tile_url],
+    });
+
+    if let Some(name) = &metadata.name {
+        tj["name"] = serde_json::json!(name);
+    }
+    if let Some(bounds) = &metadata.bounds {
+        tj["bounds"] = serde_json::json!(bounds);
+    }
+    if let Some(minzoom) = metadata.minzoom {
+        tj["minzoom"] = serde_json::json!(minzoom);
+    }
+    if let Some(maxzoom) = metadata.maxzoom {
+        tj["maxzoom"] = serde_json::json!(maxzoom);
+    }
+    if let Some(attribution) = &metadata.attribution {
+        tj["attribution"] = serde_json::json!(attribution);
+    }
+    if let Some(vector_layers) = &metadata.vector_layers {
+        tj["vector_layers"] = serde_json::json!(vector_layers);
+    }
+
+    Ok(rocket::serde::json::Json(tj))
+}
+
+#[get("/tiles/<filename>/<z>/<x>/<y_with_ext..>")]
+async fn tiles(
+    filename: String,
+    z: u8,
+    x: u32,
+    y_with_ext: PathBuf,
+    config: &State<Config>,
+) -> Result<TileResponseEncoded, NotFound> {
+    let (y, ext) = parse_y_and_ext(&y_with_ext)?;
+    let content_type = content_type_for_ext(ext)?;
+
+    if let Some(path) = config.mbtiles_files.get(&filename) {
+        return serve_mbtiles_tile(path, z, x, y, content_type).await;
+    }
+
+    Err(NotFound(format!("Tile source not found: {}", filename)))
+}
+
+#[get("/files/<filename>/metadata.json")]
+async fn tilejson(
+    filename: String,
+    config: &State<Config>,
+) -> Result<rocket::serde::json::Json<serde_json::Value>, NotFound> {
+    if let Some(path) = config.mbtiles_files.get(&filename) {
+        return serve_mbtiles_metadata(&filename, path, config.port).await;
+    }
+
+    Err(NotFound(format!("Tile source not found: {}", filename)))
+}
+
+#[get("/files/<filename>")]
+async fn files(filename: &str, config: &State<Config>) -> Result<SeekStream<'static>, NotFound> {
+    if let Some(content) = config.files.get(filename) {
+        let bytes = content.clone().into_bytes();
+        let len = bytes.len();
+        let stream = std::io::Cursor::new(bytes);
+
+        Ok(SeekStream::with_opts(
+            stream,
+            len as u64,
+            "application/octet-stream",
+        ))
+    } else if config.local_files.contains(filename) {
+        SeekStream::from_path(filename)
+            .map_err(|e| NotFound(format!("Failed to read {}: {}", filename, e)))
+    } else {
+        Err(NotFound(format!("File not found: {}", filename)))
+    }
+}
+
+#[derive(Parser)]
+#[command(
+    version,
+    about = "View geospatial data files in your web browser\n\nSupported formats: GeoJSON, TileJSON, StyleJSON, PMTiles, MBTiles"
+)]
+pub struct CliArgs {
+    /// Files to view (if none provided, reads from stdin)
+    files: Vec<PathBuf>,
+}
+
+fn is_url(input: &str) -> bool {
+    input.starts_with("http://") || input.starts_with("https://")
+}
+
+impl TryFrom<CliArgs> for Config {
+    type Error = anyhow::Error;
+
+    fn try_from(args: CliArgs) -> anyhow::Result<Config> {
+        let mut file_data = HashMap::new();
+        let mut file_args = Vec::new();
+        let mut local_files = HashSet::new();
+        let mut mbtiles_files = HashMap::new();
+
+        if args.files.is_empty() {
+            let mut stdin_content = String::new();
+            io::stdin().read_to_string(&mut stdin_content).context(
+                "Failed to read from stdin (only JSON based formats can be piped; \
+                 other file formats must be passed as file paths)",
+            )?;
+
+            let filename = "stdin.json".to_string();
+            file_data.insert(filename.clone(), stdin_content);
+            file_args.push(filename);
+        } else {
+            for file_path in &args.files {
+                let path_str = file_path.to_string_lossy();
+
+                if is_url(&path_str) {
+                    // MBTiles files are tiled server-side, which requires a local file
+                    let lower = path_str.to_lowercase();
+                    if lower.ends_with(".mbtiles") {
+                        bail!("MBTiles files can only be viewed from local paths, not URLs");
+                    }
+                    file_args.push(path_str.to_string());
+                } else {
+                    let metadata = fs::metadata(file_path)
+                        .with_context(|| format!("File not found: {}", path_str))?;
+
+                    if !metadata.file_type().is_file() {
+                        bail!("Expected {} to be a file, but found a directory", path_str);
+                    }
+
+                    // Local files are identified by their path exactly as passed on
+                    // the command line, which is necessarily unique
+                    let path = path_str.to_string();
+                    let lower = path.to_lowercase();
+
+                    local_files.insert(path.clone());
+                    file_args.push(path.clone());
+
+                    if lower.ends_with(".mbtiles") {
+                        let pool = mbtiles::open_pool(&path)?;
+                        mbtiles_files.insert(path.clone(), pool);
+                    }
+                }
+            }
+        }
+
+        Ok(Config {
+            files: file_data,
+            file_args,
+            local_files,
+            mbtiles_files,
+            port: 0, // set in main() after port selection
+        })
+    }
+}
+
+fn find_available_port(start_port: u16) -> anyhow::Result<u16> {
+    for port in start_port..=65535 {
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return Ok(port);
+        }
+    }
+    bail!("No available ports found between {} and 65535", start_port)
+}
+
+#[rocket::main]
+async fn main() -> anyhow::Result<()> {
+    let args = CliArgs::parse();
+    let mut config = Config::try_from(args)?;
+
+    let port = find_available_port(3857)?;
+    config.port = port;
+
+    let file_list = config.file_args.join(",");
+    let url = format!(
+        "http://localhost:{}/?args={}",
+        port,
+        urlencoding::encode(&file_list)
+    );
+
+    let figment = rocket::Config::figment()
+        .merge(("port", port))
+        .merge(("log_level", "off"));
+
+    let rocket = rocket::build().configure(figment).manage(config).mount(
+        "/",
+        routes![index, files, fonts, css, bundle, bundle_map, tiles, tilejson],
+    );
+
+    let rocket = rocket.ignite().await?;
+
+    println!("Listening on {}", url);
+
+    // Open browser only after server is ready to launch; if this fails the
+    // printed URL still lets the user open it manually, so keep serving
+    if let Err(e) = open::that(&url) {
+        eprintln!("Failed to open browser: {}", e);
+    }
+
+    rocket.launch().await?;
+
+    Ok(())
+}

@@ -1,0 +1,296 @@
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+html,
+body {
+    height: 100%;
+}
+
+body {
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    font-family: monospace;
+    display: flex;
+    flex-direction: column;
+}
+
+select,
+button {
+    font-family: monospace;
+}
+
+main {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+}
+
+/* Map view structure */
+.map-view {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.map-wrapper {
+    position: relative;
+}
+
+.map-wrapper.inactive {
+    display: none;
+}
+
+.map-container {
+    width: 100%;
+    height: 100%;
+}
+
+.map-controls {
+    position: absolute;
+    top: 10px;
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 0.5em;
+    border-radius: 0.375em;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+}
+
+.map-controls:empty {
+    display: none;
+}
+
+.map-controls > select {
+    margin: 0;
+}
+
+/* Single mode */
+.map-view.mode-single .map-wrapper.active {
+    width: 100%;
+    height: 100%;
+}
+
+.map-view.mode-single .map-controls {
+    left: 10px;
+}
+
+/* Swipe mode */
+.map-view.mode-swipe {
+    display: flex;
+}
+
+.map-view.mode-swipe .map-wrapper.active {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.map-view.mode-swipe .map-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: auto;
+}
+
+.map-view.mode-swipe .map-wrapper.active[data-position="0"] .map-controls {
+    left: 10px;
+    pointer-events: auto;
+}
+
+.map-view.mode-swipe .map-wrapper.active[data-position="1"] .map-controls {
+    right: 10px;
+    left: auto;
+    pointer-events: auto;
+}
+
+/* HACK: Override MapLibre's float direction for bottom-right controls when
+ * attached to a map that's displayed on the left side of a swipe view.
+ */
+.map-view.mode-swipe .map-wrapper.active[data-position="0"] .maplibregl-ctrl-bottom-right {
+    right: auto;
+}
+.map-view.mode-swipe
+    .map-wrapper.active[data-position="0"]
+    .maplibregl-ctrl-bottom-right
+    .maplibregl-ctrl {
+    float: left;
+    margin: 0 0 10px 10px;
+}
+.map-view.mode-swipe
+    .map-wrapper.active[data-position="0"]
+    .maplibregl-ctrl-bottom-right
+    .maplibregl-ctrl-attrib-button {
+    left: 0;
+}
+.map-view.mode-swipe
+    .map-wrapper.active[data-position="0"]
+    .maplibregl-ctrl-bottom-right
+    .maplibregl-compact-show {
+    padding: 2px 8px 2px 28px;
+}
+
+.swipe-slider {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background-color: white;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    cursor: ew-resize;
+    z-index: 250;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.swipe-slider::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    background-color: white;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.3);
+}
+
+.swipe-slider::after {
+    content: "⟷";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 20px;
+    color: #333;
+    pointer-events: none;
+}
+
+/* Tile mode */
+.map-view.mode-tile {
+    display: grid;
+    gap: 0;
+}
+
+.map-view.mode-tile .map-wrapper.active {
+    width: 100%;
+    height: 100%;
+}
+
+/* Use data-position to control grid order */
+.map-view.mode-tile .map-wrapper.active[data-position="0"] {
+    order: 0;
+}
+.map-view.mode-tile .map-wrapper.active[data-position="1"] {
+    order: 1;
+}
+.map-view.mode-tile .map-wrapper.active[data-position="2"] {
+    order: 2;
+}
+.map-view.mode-tile .map-wrapper.active[data-position="3"] {
+    order: 3;
+}
+.map-view.mode-tile .map-wrapper.active[data-position="4"] {
+    order: 4;
+}
+.map-view.mode-tile .map-wrapper.active[data-position="5"] {
+    order: 5;
+}
+
+.map-view.mode-tile .map-controls {
+    left: 10px;
+}
+
+/* Grid layouts for different numbers of tiles */
+.map-view.mode-tile[data-active-count="1"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+}
+
+.map-view.mode-tile[data-active-count="2"] {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr;
+}
+
+.map-view.mode-tile[data-active-count="3"] {
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: 1fr;
+}
+
+.map-view.mode-tile[data-active-count="4"] {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+
+.map-view.mode-tile[data-active-count="5"],
+.map-view.mode-tile[data-active-count="6"] {
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+
+.error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    font-size: 18px;
+    color: darkred;
+}
+
+#toolbar {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0.5em;
+    flex-shrink: 0;
+
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+
+    background-color: #fff;
+    border-bottom: 1px solid #ccc;
+
+    z-index: 500;
+}
+
+.toolbar-left {
+    display: flex;
+    gap: 0.5em;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.toolbar-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2em;
+}
+
+.map-position {
+    font-weight: bold;
+}
+
+#toolbar label {
+    display: flex;
+    gap: 0.25em;
+    align-items: center;
+}
+
+.maplibregl-ctrl {
+    font:
+        12px / 20px Helvetica Neue,
+        Arial,
+        Helvetica,
+        sans-serif;
+}
+
+.maplibregl-ctrl-attrib a,
+.maplibregl-ctrl-attrib a:hover {
+    color: #0969da;
+}

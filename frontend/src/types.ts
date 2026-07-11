@@ -1,0 +1,73 @@
+export const VALID_GEOJSON_TYPES: string[] = [
+  "Feature",
+  "FeatureCollection",
+  "Point",
+  "LineString",
+  "Polygon",
+  "MultiPoint",
+  "MultiLineString",
+  "MultiPolygon",
+  "GeometryCollection",
+];
+
+export type FileKind = "geojson" | "tilejson" | "stylejson" | "pmtiles" | "mbtiles";
+
+export type FileInfo = {
+  kind: FileKind;
+  title: string;
+  data: unknown;
+  url: string;
+};
+
+export type TileJSON = {
+  tilejson: string;
+  tiles: Array<string>;
+  attribution?: string;
+  vector_layers?: Array<{ id: string }>;
+  bounds?: [number, number, number, number];
+  minzoom?: number;
+  maxzoom?: number;
+  tileSize?: number; // not part of TileJSON spec but added by several implementations
+};
+
+export type PMTilesMetadata = {
+  format?: string;
+  attribution?: string;
+  vector_layers?: Array<{ id: string }>;
+  tilestats?: {
+    layers: Array<{ layer: string }>;
+  };
+  tileSize?: number;
+};
+
+export type StyleJSON = {
+  version: number;
+  sources: Record<string, unknown>;
+  layers: Array<unknown>;
+  glyphs?: string;
+};
+
+export type ViewMode = "single" | "swipe" | "tile";
+
+export type URLState = {
+  mode: ViewMode;
+  selectedIndices: number[];
+};
+
+export type MapCamera = {
+  zoom: number;
+  center: [number, number];
+  bearing?: number;
+  pitch?: number;
+};
+
+export type MapState = {
+  camera?: MapCamera;
+  bounds?: [number, number, number, number];
+};
+
+export type AppState = URLState & MapState;
+
+export type MapInitResult = {
+  map: import("maplibre-gl").Map;
+};

@@ -1,0 +1,24 @@
+{
+  "scripts": {
+    "build": "esbuild src/app.tsx --bundle --sourcemap --outfile=dist/bundle.js && esbuild style.css --bundle --outfile=dist/style.css",
+    "typecheck": "tsc",
+    "lint": "biome lint",
+    "format": "biome check --formatter-enabled=true --linter-enabled=false --assist-enabled=true --write"
+  },
+  "dependencies": {
+    "@b9g/crank": "^0.7.9",
+    "@turf/turf": "^7.3.5",
+    "maplibre-gl": "^5.24.0",
+    "pmtiles": "^4.4.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.3",
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^26.1.1",
+    "esbuild": "^0.28.1",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
+}
