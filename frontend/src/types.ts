@@ -56,6 +56,7 @@ export type URLState = {
   showCollisionBoxes: boolean;
   enableRotation: boolean;
   enablePitch: boolean;
+  fullscreen: boolean;
 };
 
 export type MapCamera = {

@@ -17,7 +17,7 @@ function Toolbar({
   onSettingChange: (
     key: keyof Pick<
       AppState,
-      "showTileBoundaries" | "showCollisionBoxes" | "enableRotation" | "enablePitch"
+      "showTileBoundaries" | "showCollisionBoxes" | "enableRotation" | "enablePitch" | "fullscreen"
     >,
     value: boolean,
   ) => void;
@@ -133,6 +133,10 @@ function Toolbar({
             </label>
           </div>
         </details>
+
+        <button onclick={() => onSettingChange("fullscreen", !state.fullscreen)}>
+          {state.fullscreen ? "Exit Fullscreen" : "Fullscreen"}
+        </button>
       </div>
     </div>
   );
@@ -192,6 +196,7 @@ async function* App(this: Context): AsyncGenerator<Element> {
       showCollisionBoxes: params.get("collisionBoxes") === "true",
       enableRotation: params.get("rotation") === "true",
       enablePitch: params.get("pitch") === "true",
+      fullscreen: params.get("fullscreen") === "true",
       camera,
       bounds,
     };
@@ -228,6 +233,10 @@ async function* App(this: Context): AsyncGenerator<Element> {
       updates.enablePitch ? params.set("pitch", "true") : params.delete("pitch");
     }
 
+    if (updates.fullscreen !== undefined) {
+      updates.fullscreen ? params.set("fullscreen", "true") : params.delete("fullscreen");
+    }
+
     const newURL = `${window.location.pathname}?${params}${window.location.hash}`;
     window.history.replaceState({}, "", newURL);
   };
@@ -240,7 +249,7 @@ async function* App(this: Context): AsyncGenerator<Element> {
   const onSettingChange = (
     key: keyof Pick<
       AppState,
-      "showTileBoundaries" | "showCollisionBoxes" | "enableRotation" | "enablePitch"
+      "showTileBoundaries" | "showCollisionBoxes" | "enableRotation" | "enablePitch" | "fullscreen"
     >,
     value: boolean,
   ) => {
@@ -274,6 +283,9 @@ async function* App(this: Context): AsyncGenerator<Element> {
 
   for (const _ of this) {
     const state = getStateFromURL();
+    // fullscreen CSS keys off a body class, so it must be applied here (not in the
+    // settings change handler) to take effect when loading a ?fullscreen=true URL
+    document.body.classList.toggle("fullscreen", state.fullscreen);
     const numMaps =
       state.mode === "single" ? 1 : state.mode === "swipe" ? 2 : Math.min(6, allFileInfos.length);
 
@@ -286,6 +298,9 @@ async function* App(this: Context): AsyncGenerator<Element> {
           onSettingChange={onSettingChange}
           onSelectedIndexChange={onSelectedIndexChange}
         />
+        <button class="unfullscreen-button" onclick={() => onSettingChange("fullscreen", false)}>
+          Exit Fullscreen
+        </button>
         <main class={state.mode}>
           <MapView
             mode={state.mode}

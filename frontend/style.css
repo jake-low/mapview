@@ -289,6 +289,50 @@ main {
     align-items: center;
 }
 
+.unfullscreen-button {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    z-index: 2001;
+    display: none;
+}
+
+body.fullscreen #toolbar,
+body.fullscreen .map-controls,
+body.fullscreen .maplibregl-control-container {
+    display: none;
+}
+
+body.fullscreen .unfullscreen-button {
+    display: block;
+}
+
+button,
+.button {
+    background-color: #fff;
+    border: 1px solid #dbdbdb;
+    border-radius: 0.375em;
+    cursor: pointer;
+    padding: calc(0.5em - 1px) 1em;
+    text-align: center;
+    white-space: nowrap;
+}
+
+a.button {
+    color: #000;
+    text-decoration: none;
+}
+
+button:hover,
+.button:hover {
+    border-color: #b5b5b5;
+}
+
+button:active,
+.button:active {
+    border-color: #4a4a4a;
+}
+
 .maplibregl-ctrl {
     font:
         12px / 20px Helvetica Neue,
