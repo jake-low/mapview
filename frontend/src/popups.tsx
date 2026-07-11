@@ -7,10 +7,47 @@ export async function renderToString(element: Element): Promise<string> {
   return await renderer.render(element);
 }
 
-function FeatureHeader({ feature }: { feature: MapGeoJSONFeature }): Element {
+function decodeOsmId(rawId: number): { type: string; id: number } | null {
+  const typeCode = rawId % 10;
+  const osmId = Math.floor(rawId / 10);
+  if (typeCode === 1) return { type: "node", id: osmId };
+  if (typeCode === 2) return { type: "way", id: osmId };
+  if (typeCode === 3) return { type: "relation", id: osmId };
+  return null;
+}
+
+function FeatureHeader({
+  feature,
+  isOSM,
+}: {
+  feature: MapGeoJSONFeature;
+  isOSM: boolean;
+}): Element {
+  let idElement: Element;
+  if (feature.id === undefined) {
+    idElement = <span>No ID</span>;
+  } else if (isOSM && typeof feature.id === "number") {
+    const osm = decodeOsmId(feature.id);
+    if (osm) {
+      idElement = (
+        <a
+          href={`https://www.openstreetmap.org/${osm.type}/${osm.id}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {osm.type}/{osm.id}
+        </a>
+      );
+    } else {
+      idElement = <span>ID: {String(feature.id)}</span>;
+    }
+  } else {
+    idElement = <span>ID: {String(feature.id)}</span>;
+  }
+
   return (
     <div class="feature-header">
-      {feature.id === undefined ? <span>No ID</span> : <span>ID: {String(feature.id)}</span>}
+      {idElement}
       {" • "}
       <span>{feature.geometry.type}</span>
     </div>
@@ -102,10 +139,12 @@ export function FeatureInfo({
   features,
   showLayers = false,
   layerColors,
+  osmSources,
 }: {
   features: MapGeoJSONFeature[];
   showLayers?: boolean;
   layerColors?: Map<string, string>;
+  osmSources?: Set<string>;
 }): Element {
   const grouped = groupFeaturesBySource(features);
 
@@ -129,7 +168,7 @@ export function FeatureInfo({
               {!showLayers && feature.sourceLayer && (
                 <LayerHeader layerName={feature.sourceLayer} color={color} />
               )}
-              <FeatureHeader feature={feature} />
+              <FeatureHeader feature={feature} isOSM={osmSources?.has(feature.source) ?? false} />
               <PropertiesTable properties={feature.properties || {}} />
               {showLayers && layers.length > 0 && (
                 <Fragment>
@@ -221,6 +260,13 @@ export function setupHoverPopup(
     if (features.length > 0) {
       isPinned = true;
 
+      const osmSources = new Set<string>();
+      for (const [id, source] of Object.entries(map.getStyle().sources ?? {})) {
+        if ((source as any).attribution?.includes("OpenStreetMap")) {
+          osmSources.add(id);
+        }
+      }
+
       const html = await renderToString(
         <Fragment>
           <button class="popup-close">×</button>
@@ -228,6 +274,7 @@ export function setupHoverPopup(
             features={features}
             showLayers={options.showLayers}
             layerColors={options.layerColors}
+            osmSources={osmSources}
           />
         </Fragment>,
       );
