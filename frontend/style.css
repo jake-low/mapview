@@ -25,6 +25,11 @@ main {
     min-height: 0;
 }
 
+hr {
+    border: none;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
 /* Map view structure */
 .map-view {
     width: 100%;
@@ -344,6 +349,77 @@ button:active,
 .maplibregl-ctrl-attrib a,
 .maplibregl-ctrl-attrib a:hover {
     color: #0969da;
+}
+
+.maplibregl-popup {
+    z-index: 999;
+}
+
+.maplibregl-popup-content {
+    max-height: 50em;
+    overflow: auto;
+    pointer-events: initial;
+    font-family: monospace;
+}
+
+table {
+    line-height: 1;
+    white-space: pre;
+}
+
+table td:nth-child(2) {
+    padding-left: 1ch;
+    padding-right: 1ch;
+}
+
+.feature-popup .maplibregl-popup-content {
+    font-family: monospace;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.feature-popup table td {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.feature-popup h4 {
+    margin: 0.5em 0 0.25em 0;
+    font-size: 0.9em;
+    font-weight: bold;
+}
+
+.layer-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin-bottom: 0.25em;
+}
+
+.layer-swatch {
+    width: 1em;
+    height: 1em;
+    border: 1px solid #ccc;
+    flex-shrink: 0;
+}
+
+.popup-close {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    color: #333;
+}
+
+.popup-close:hover {
+    color: #000;
 }
 
 #toolbar details {

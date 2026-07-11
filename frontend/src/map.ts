@@ -2,6 +2,7 @@ import * as turf from "@turf/turf";
 import type { GeoJSON } from "geojson";
 import maplibre, { type Map as MaplibreMap } from "maplibre-gl";
 import { PMTiles, Protocol } from "pmtiles";
+import { setupHoverPopup } from "./popups.tsx";
 import type { FileInfo, MapInitResult, PMTilesMetadata, StyleJSON, TileJSON } from "./types.ts";
 
 const TEXT_FONT = ["Noto Sans"];
@@ -89,11 +90,31 @@ export function initializeMap(
   return map;
 }
 
+function setupMapInteractions(
+  map: MaplibreMap,
+  options?: {
+    showLayers?: boolean;
+    layers?: string[];
+    layerColors?: Map<string, string>;
+  },
+): void {
+  setupHoverPopup(map, options || {});
+}
+
+const VECTOR_LAYER_SUFFIXES = [
+  "polygons",
+  "lines",
+  "points",
+  "point_labels",
+  "line_labels",
+  "polygon_labels",
+];
+
 export function createVectorLayers(
   map: MaplibreMap,
   sourceName: string,
   layerNames: string[],
-): void {
+): { layerIds: string[]; layerColors: Map<string, string> } {
   const layerColors = new Map<string, string>(
     layerNames.map((name, i) => [name, LAYER_COLORS[i % LAYER_COLORS.length]]),
   );
@@ -203,6 +224,12 @@ export function createVectorLayers(
       paint: labelPaint(color),
     });
   }
+
+  const layerIds = layerNames.flatMap((name) =>
+    VECTOR_LAYER_SUFFIXES.map((suffix) => `${name}_${suffix}`),
+  );
+
+  return { layerIds, layerColors };
 }
 
 export async function initializeStyleMap(
@@ -221,6 +248,7 @@ export async function initializeStyleMap(
 
   return new Promise((resolve) => {
     map.on("load", () => {
+      setupMapInteractions(map, { showLayers: true });
       resolve({ map });
     });
   });
@@ -314,6 +342,8 @@ export async function initializeGeoJSONMap(
         },
       });
 
+      const layers = ["geojson-fill", "geojson-line", "geojson-point"];
+      setupMapInteractions(map, { layers });
       resolve({ map });
     });
   });
@@ -363,8 +393,11 @@ function initializeTileMap(
 
   return new Promise((resolve) => {
     map.on("load", () => {
-      if (!config.isRaster) {
-        createVectorLayers(map, "tiles", config.layerNames);
+      if (config.isRaster) {
+        setupMapInteractions(map);
+      } else {
+        const { layerIds, layerColors } = createVectorLayers(map, "tiles", config.layerNames);
+        setupMapInteractions(map, { layers: layerIds, layerColors });
       }
 
       if (!hasHashInUrl() && config.bounds) {
