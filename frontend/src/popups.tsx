@@ -159,7 +159,7 @@ export function setupHoverPopup(
     layers?: string[];
     layerColors?: Map<string, string>;
   } = {},
-): void {
+): { hidePopup: () => void; setEnabled: (enabled: boolean) => void } {
   const popup = new Popup({
     closeButton: false,
     closeOnClick: false,
@@ -168,6 +168,19 @@ export function setupHoverPopup(
   });
 
   let isPinned = false;
+  let isEnabled = true;
+
+  const hidePopup = () => {
+    isPinned = false;
+    popup.remove();
+  };
+
+  const setEnabled = (enabled: boolean) => {
+    isEnabled = enabled;
+    if (!enabled) {
+      hidePopup();
+    }
+  };
 
   const queryFeatures = (e: MapMouseEvent) => {
     const tolerance = 5;
@@ -181,13 +194,15 @@ export function setupHoverPopup(
   };
 
   map.on("mousemove", (e: MapMouseEvent) => {
-    if (isPinned) return;
+    if (!isEnabled || isPinned) return;
 
     const features = queryFeatures(e);
     map.getCanvas().style.cursor = features.length > 0 ? "pointer" : "";
   });
 
   map.on("click", async (e: MapMouseEvent) => {
+    if (!isEnabled) return;
+
     const features = queryFeatures(e);
 
     if (features.length > 0) {
@@ -228,9 +243,11 @@ export function setupHoverPopup(
   });
 
   map.on("mouseout", () => {
-    if (isPinned) return;
+    if (!isEnabled || isPinned) return;
     map.getCanvas().style.cursor = "";
   });
+
+  return { hidePopup, setEnabled };
 }
 
 export function setupFeatureHighlighting(

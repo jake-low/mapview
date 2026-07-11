@@ -495,6 +495,27 @@ table td:nth-child(2) {
     padding: 0.25em 0;
 }
 
+.context-menu {
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 1px solid #ccc;
+    border-radius: 0.375em;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    min-width: 150px;
+}
+
+.context-menu-item {
+    padding: 0.5em 1em;
+    cursor: pointer;
+    font-family: monospace;
+    font-size: 12px;
+    user-select: none;
+}
+
+.context-menu-item:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
 .basemap-switcher {
     position: absolute;
     top: 10px;

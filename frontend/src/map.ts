@@ -3,6 +3,7 @@ import type { GeoJSON } from "geojson";
 import maplibre, { type ExpressionSpecification, type Map as MaplibreMap } from "maplibre-gl";
 import { PMTiles, Protocol } from "pmtiles";
 import { basemaps, setupBasemapSwitcher } from "./basemap.ts";
+import { setupContextMenu } from "./contextmenu.ts";
 import { setupFeatureHighlighting, setupHoverPopup } from "./popups.tsx";
 import { setupStatsWidget } from "./stats.ts";
 import type {
@@ -112,10 +113,12 @@ function setupMapInteractions(
     enableHighlighting?: boolean;
   },
 ): void {
-  setupHoverPopup(map, options || {});
+  const { setEnabled: setPopupEnabled } = setupHoverPopup(map, options || {});
   if (options?.enableHighlighting && options.layers) {
     setupFeatureHighlighting(map, { layers: options.layers });
   }
+
+  setupContextMenu(map, { setPopupEnabled });
 }
 
 const VECTOR_LAYER_SUFFIXES = [
