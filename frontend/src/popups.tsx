@@ -190,7 +190,20 @@ export function setupHoverPopup(
     ];
 
     const queryOptions = options.layers ? { layers: options.layers } : undefined;
-    return map.queryRenderedFeatures(bbox, queryOptions);
+    const allFeatures = map.queryRenderedFeatures(bbox, queryOptions);
+
+    // Filter out features that don't match the search filter
+    return allFeatures.filter((feature) => {
+      if (feature.id === undefined || !feature.source) {
+        return true;
+      }
+      const featureState = map.getFeatureState({
+        source: feature.source,
+        sourceLayer: feature.sourceLayer,
+        id: feature.id,
+      });
+      return featureState.match !== false;
+    });
   };
 
   map.on("mousemove", (e: MapMouseEvent) => {
@@ -292,6 +305,16 @@ export function setupFeatureHighlighting(
 
     for (const feature of features) {
       if (feature.id !== undefined && feature.source) {
+        // Skip features that don't match the search filter
+        const featureState = map.getFeatureState({
+          source: feature.source,
+          sourceLayer: feature.sourceLayer,
+          id: feature.id,
+        });
+        if (featureState.match === false) {
+          continue;
+        }
+
         map.setFeatureState(
           { source: feature.source, sourceLayer: feature.sourceLayer, id: feature.id },
           { hover: true },

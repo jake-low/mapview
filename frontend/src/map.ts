@@ -6,6 +6,7 @@ import { basemaps, setupBasemapSwitcher } from "./basemap.ts";
 import { setupContextMenu } from "./contextmenu.ts";
 import { setupMeasurementTool } from "./measurement.ts";
 import { setupFeatureHighlighting, setupHoverPopup } from "./popups.tsx";
+import { registerSearchableMap } from "./search.ts";
 import { setupStatsWidget } from "./stats.ts";
 import type {
   FileInfo,
@@ -24,6 +25,11 @@ const TEXT_HALO_BLUR = 0;
 const TEXT_SIZE_POINT = 9;
 const TEXT_SIZE_LINE = 8;
 const TEXT_SIZE_POLYGON = 10;
+
+const DIMMED_FILL_COLOR = "#323b44";
+const DIMMED_LINE_COLOR = "#19232d";
+const DIMMED_CIRCLE_COLOR = "#19232d";
+const DIMMED_TEXT_COLOR = "#323b44";
 
 const LAYER_COLORS = [
   "#f4b8e4",
@@ -45,13 +51,31 @@ type MapSettings = {
   enablePitch?: boolean;
 };
 
+function dimmable(color: string, dimmedColor: string): ExpressionSpecification {
+  return [
+    "case",
+    ["all", ["global-state", "searchActive"], ["!=", ["feature-state", "match"], true]],
+    dimmedColor,
+    color,
+  ];
+}
+
 function hoverable(hovered: number, normal: number): ExpressionSpecification {
-  return ["case", ["boolean", ["feature-state", "hover"], false], hovered, normal];
+  return [
+    "case",
+    [
+      "all",
+      ["boolean", ["feature-state", "hover"], false],
+      ["any", ["!", ["global-state", "searchActive"]], ["==", ["feature-state", "match"], true]],
+    ],
+    hovered,
+    normal,
+  ];
 }
 
 function labelPaint(color: string) {
   return {
-    "text-color": color,
+    "text-color": dimmable(color, DIMMED_TEXT_COLOR),
     "text-halo-color": TEXT_HALO_COLOR,
     "text-halo-width": TEXT_HALO_WIDTH,
     "text-halo-blur": TEXT_HALO_BLUR,
@@ -161,9 +185,9 @@ export function createVectorLayers(
       "source-layer": layerName,
       filter: ["==", ["geometry-type"], "Polygon"],
       paint: {
-        "fill-color": color,
+        "fill-color": dimmable(color, DIMMED_FILL_COLOR),
         "fill-opacity": hoverable(0.3, 0.15),
-        "fill-outline-color": color,
+        "fill-outline-color": dimmable(color, DIMMED_FILL_COLOR),
       },
     });
   }
@@ -177,7 +201,7 @@ export function createVectorLayers(
       "source-layer": layerName,
       filter: ["==", ["geometry-type"], "LineString"],
       paint: {
-        "line-color": color,
+        "line-color": dimmable(color, DIMMED_LINE_COLOR),
         "line-width": hoverable(2, 0.5),
       },
     });
@@ -192,7 +216,7 @@ export function createVectorLayers(
       "source-layer": layerName,
       filter: ["==", ["geometry-type"], "Point"],
       paint: {
-        "circle-color": color,
+        "circle-color": dimmable(color, DIMMED_CIRCLE_COLOR),
         "circle-radius": 2,
         "circle-opacity": 0.8,
         "circle-stroke-color": "#fff",
@@ -285,6 +309,7 @@ export async function initializeStyleMap(
 
   return new Promise((resolve) => {
     map.on("load", () => {
+      map.setGlobalStateProperty("searchActive", false);
       setupMapInteractions(map, { showLayers: true });
       resolve({ map });
     });
@@ -345,11 +370,12 @@ export async function initializeGeoJSONMap(
 
   return new Promise((resolve) => {
     map.on("load", () => {
+      map.setGlobalStateProperty("searchActive", false);
       map.addSource("geojson-data", {
         type: "geojson",
         data: geojson,
-        // assign ids to features that lack them; hover highlighting tracks
-        // features through feature-state, which requires ids
+        // assign ids to features that lack them; hover highlighting and search
+        // filtering track features through feature-state, which requires ids
         generateId: true,
       });
 
@@ -359,7 +385,7 @@ export async function initializeGeoJSONMap(
         source: "geojson-data",
         filter: ["==", ["geometry-type"], "Polygon"],
         paint: {
-          "fill-color": "#088",
+          "fill-color": dimmable("#088", DIMMED_FILL_COLOR),
           "fill-opacity": hoverable(0.6, 0.4),
         },
       });
@@ -370,7 +396,7 @@ export async function initializeGeoJSONMap(
         source: "geojson-data",
         filter: ["==", ["geometry-type"], "LineString"],
         paint: {
-          "line-color": "#088",
+          "line-color": dimmable("#088", DIMMED_LINE_COLOR),
           "line-width": hoverable(4, 2),
         },
       });
@@ -381,7 +407,7 @@ export async function initializeGeoJSONMap(
         source: "geojson-data",
         filter: ["==", ["geometry-type"], "Point"],
         paint: {
-          "circle-color": "#088",
+          "circle-color": dimmable("#088", DIMMED_CIRCLE_COLOR),
           "circle-radius": 6,
           "circle-opacity": 1,
           "circle-stroke-color": "#fff",
@@ -391,6 +417,7 @@ export async function initializeGeoJSONMap(
 
       const layers = ["geojson-fill", "geojson-line", "geojson-point"];
       setupMapInteractions(map, { layers, enableHighlighting: true });
+      registerSearchableMap(map, layers);
       setupBasemapSwitcher(map, container);
       setupStatsWidget(container, geojson);
       resolve({ map });
@@ -442,6 +469,7 @@ function initializeTileMap(
 
   return new Promise((resolve) => {
     map.on("load", () => {
+      map.setGlobalStateProperty("searchActive", false);
       let legendData: LayerGroup[] | undefined;
 
       if (config.isRaster) {
@@ -453,6 +481,7 @@ function initializeTileMap(
           config.layerNames,
         );
         setupMapInteractions(map, { layers: layerIds, layerColors, enableHighlighting: true });
+        registerSearchableMap(map, layerIds);
         legendData = legend;
       }
 
