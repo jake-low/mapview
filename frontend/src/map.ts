@@ -2,6 +2,7 @@ import * as turf from "@turf/turf";
 import type { GeoJSON } from "geojson";
 import maplibre, { type ExpressionSpecification, type Map as MaplibreMap } from "maplibre-gl";
 import { PMTiles, Protocol } from "pmtiles";
+import { basemaps, setupBasemapSwitcher } from "./basemap.ts";
 import { setupFeatureHighlighting, setupHoverPopup } from "./popups.tsx";
 import type {
   FileInfo,
@@ -280,26 +281,33 @@ export async function initializeGeoJSONMap(
   geojson: GeoJSON,
   settings?: MapSettings,
 ): Promise<MapInitResult> {
+  const sources: Record<string, any> = {};
+  const layers: any[] = [];
+
+  for (const basemap of basemaps) {
+    sources[basemap.id] = {
+      type: "raster",
+      tiles: basemap.tiles,
+      tileSize: 256,
+      attribution: basemap.attribution,
+    };
+    layers.push({
+      id: basemap.id,
+      type: "raster",
+      source: basemap.id,
+      layout: {
+        visibility: basemap.id === "osm-carto" ? "visible" : "none",
+      },
+    });
+  }
+
   const map = initializeMap(
     container,
     {
       style: {
         version: 8,
-        sources: {
-          osm: {
-            type: "raster",
-            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-            tileSize: 256,
-            attribution: "© OpenStreetMap contributors",
-          },
-        },
-        layers: [
-          {
-            id: "osm",
-            type: "raster",
-            source: "osm",
-          },
-        ],
+        sources,
+        layers,
       },
     },
     settings,
@@ -368,6 +376,7 @@ export async function initializeGeoJSONMap(
 
       const layers = ["geojson-fill", "geojson-line", "geojson-point"];
       setupMapInteractions(map, { layers, enableHighlighting: true });
+      setupBasemapSwitcher(map, container);
       resolve({ map });
     });
   });
