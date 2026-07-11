@@ -1,4 +1,5 @@
 import type { MapGeoJSONFeature } from "maplibre-gl";
+import * as shapefile from "shapefile";
 import { type FileInfo, type FileKind, VALID_GEOJSON_TYPES } from "./types.ts";
 
 /*
@@ -87,6 +88,28 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
       const res = await fetch(url);
       data = await res.json();
       kind = extension === "geojson" ? "geojson" : detectJSONType(data);
+      break;
+    }
+    case "shp": {
+      const base = filename.slice(0, -4);
+      const baseUrl = isUrl(filename) ? base : `/files/${encodeURIComponent(base)}`;
+
+      const shpRes = await fetch(`${baseUrl}.shp`);
+      const shpBuffer = await shpRes.arrayBuffer();
+
+      // Try to fetch .dbf file, but it's optional
+      let dbfBuffer: ArrayBuffer | undefined;
+      try {
+        const dbfRes = await fetch(`${baseUrl}.dbf`);
+        if (dbfRes.ok) {
+          dbfBuffer = await dbfRes.arrayBuffer();
+        }
+      } catch {
+        // .dbf file is optional, continue without it
+      }
+
+      data = await shapefile.read(shpBuffer, dbfBuffer);
+      kind = "shapefile";
       break;
     }
     case "pmtiles":

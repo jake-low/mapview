@@ -609,6 +609,7 @@ export async function initializeMapFromFileInfo(
     case "stylejson":
       return initializeStyleMap(container, fileInfo.data as StyleJSON, settings);
     case "geojson":
+    case "shapefile":
       return initializeGeoJSONMap(container, fileInfo.data as GeoJSON, settings);
     case "tilejson":
       return initializeTileJSONMap(container, fileInfo.data as TileJSON, settings);
