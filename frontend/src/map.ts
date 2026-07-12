@@ -392,9 +392,6 @@ export async function initializeGeoJSONMap(
       map.addSource("geojson-data", {
         type: "geojson",
         data: geojson,
-        // assign ids to features that lack them; hover highlighting and search
-        // filtering track features through feature-state, which requires ids
-        generateId: true,
       });
 
       map.addLayer({
