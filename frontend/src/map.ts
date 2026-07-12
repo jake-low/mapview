@@ -583,7 +583,7 @@ export async function initializePMTilesMap(
   );
 }
 
-/** MBTiles files are tiled server-side; the server exposes their TileJSON */
+/** MBTiles and GeoTIFF files are tiled server-side; the server exposes their TileJSON */
 async function fetchTileJSON(url: string): Promise<TileJSON> {
   const response = await fetch(`${url}/metadata.json`);
   if (!response.ok) {
@@ -593,6 +593,14 @@ async function fetchTileJSON(url: string): Promise<TileJSON> {
 }
 
 export async function initializeMBTilesMap(
+  container: HTMLElement,
+  url: string,
+  settings?: MapSettings,
+): Promise<MapInitResult> {
+  return initializeTileJSONMap(container, await fetchTileJSON(url), settings);
+}
+
+export async function initializeGeoTIFFMap(
   container: HTMLElement,
   url: string,
   settings?: MapSettings,
@@ -617,5 +625,7 @@ export async function initializeMapFromFileInfo(
       return initializePMTilesMap(container, fileInfo.url, settings);
     case "mbtiles":
       return initializeMBTilesMap(container, fileInfo.url, settings);
+    case "geotiff":
+      return initializeGeoTIFFMap(container, fileInfo.url, settings);
   }
 }

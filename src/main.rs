@@ -18,6 +18,9 @@ extern crate rocket;
 
 mod mbtiles;
 
+#[cfg(feature = "gdal")]
+mod tiler;
+
 static FONTS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/fonts/pbf");
 
 struct Config {
@@ -28,6 +31,8 @@ struct Config {
     local_files: HashSet<String>,
     mbtiles_files: HashMap<String, mbtiles::MBTilesPool>,
     port: u16,
+    #[cfg(feature = "gdal")]
+    geotiff_files: HashSet<String>,
 }
 
 #[get("/")]
@@ -209,6 +214,40 @@ async fn serve_mbtiles_metadata(
     Ok(rocket::serde::json::Json(tj))
 }
 
+#[cfg(feature = "gdal")]
+#[get("/tiles/<filename>/<z>/<x>/<y_with_ext..>")]
+async fn tiles(
+    filename: String,
+    z: u8,
+    x: u32,
+    y_with_ext: PathBuf,
+    config: &State<Config>,
+    tiler: &State<tiler::Tiler>,
+) -> Result<TileResponseEncoded, NotFound> {
+    let (y, ext) = parse_y_and_ext(&y_with_ext)?;
+    let content_type = content_type_for_ext(ext)?;
+
+    if let Some(path) = config.mbtiles_files.get(&filename) {
+        return serve_mbtiles_tile(path, z, x, y, content_type).await;
+    }
+
+    if config.geotiff_files.contains(&filename) {
+        match tiler.generate_tile(&filename, z, x, y).await {
+            Ok(data) => {
+                return Ok(TileResponse {
+                    data,
+                    content_type: ContentType::PNG,
+                }
+                .with_encoding("identity"));
+            }
+            Err(e) => return Err(NotFound(format!("Tile generation failed: {}", e))),
+        }
+    }
+
+    Err(NotFound(format!("Tile source not found: {}", filename)))
+}
+
+#[cfg(not(feature = "gdal"))]
 #[get("/tiles/<filename>/<z>/<x>/<y_with_ext..>")]
 async fn tiles(
     filename: String,
@@ -227,6 +266,43 @@ async fn tiles(
     Err(NotFound(format!("Tile source not found: {}", filename)))
 }
 
+#[cfg(feature = "gdal")]
+#[get("/files/<filename>/metadata.json")]
+async fn tilejson(
+    filename: String,
+    config: &State<Config>,
+    tiler: &State<tiler::Tiler>,
+) -> Result<rocket::serde::json::Json<serde_json::Value>, NotFound> {
+    if let Some(path) = config.mbtiles_files.get(&filename) {
+        return serve_mbtiles_metadata(&filename, path, config.port).await;
+    }
+
+    if config.geotiff_files.contains(&filename) {
+        match tiler.get_metadata(&filename).await {
+            Ok(metadata) => {
+                let tile_url = format!(
+                    "http://localhost:{}/tiles/{}/{{z}}/{{x}}/{{y}}.png",
+                    config.port, filename
+                );
+                let tj = serde_json::json!({
+                    "tilejson": "3.0.0",
+                    "tiles": [tile_url],
+                    "name": metadata.name,
+                    "bounds": metadata.bounds,
+                    "minzoom": metadata.minzoom,
+                    "maxzoom": metadata.maxzoom,
+                    "tileSize": tiler::TILE_SIZE,
+                });
+                return Ok(rocket::serde::json::Json(tj));
+            }
+            Err(e) => return Err(NotFound(format!("Metadata fetch failed: {}", e))),
+        }
+    }
+
+    Err(NotFound(format!("Tile source not found: {}", filename)))
+}
+
+#[cfg(not(feature = "gdal"))]
 #[get("/files/<filename>/metadata.json")]
 async fn tilejson(
     filename: String,
@@ -262,7 +338,7 @@ async fn files(filename: &str, config: &State<Config>) -> Result<SeekStream<'sta
 #[derive(Parser)]
 #[command(
     version,
-    about = "View geospatial data files in your web browser\n\nSupported formats: GeoJSON, TileJSON, StyleJSON, PMTiles, MBTiles, GPX, KML, Shapefile"
+    about = "View geospatial data files in your web browser\n\nSupported formats: GeoJSON, TileJSON, StyleJSON, PMTiles, MBTiles, GeoTIFF, GPX, KML, Shapefile"
 )]
 pub struct CliArgs {
     /// Files to view (if none provided, reads from stdin)
@@ -281,6 +357,8 @@ impl TryFrom<CliArgs> for Config {
         let mut file_args = Vec::new();
         let mut local_files = HashSet::new();
         let mut mbtiles_files = HashMap::new();
+        #[cfg(feature = "gdal")]
+        let mut geotiff_files = HashSet::new();
 
         if args.files.is_empty() {
             let mut stdin_content = String::new();
@@ -297,10 +375,13 @@ impl TryFrom<CliArgs> for Config {
                 let path_str = file_path.to_string_lossy();
 
                 if is_url(&path_str) {
-                    // MBTiles files are tiled server-side, which requires a local file
+                    // These formats are tiled server-side, which requires a local file
                     let lower = path_str.to_lowercase();
                     if lower.ends_with(".mbtiles") {
                         bail!("MBTiles files can only be viewed from local paths, not URLs");
+                    }
+                    if lower.ends_with(".tif") || lower.ends_with(".tiff") {
+                        bail!("GeoTIFF files can only be viewed from local paths, not URLs");
                     }
                     file_args.push(path_str.to_string());
                 } else {
@@ -318,6 +399,23 @@ impl TryFrom<CliArgs> for Config {
 
                     local_files.insert(path.clone());
                     file_args.push(path.clone());
+
+                    let is_geotiff = lower.ends_with(".tif") || lower.ends_with(".tiff");
+
+                    // Track GeoTIFF files separately for tiling
+                    #[cfg(feature = "gdal")]
+                    if is_geotiff {
+                        geotiff_files.insert(path.clone());
+                    }
+
+                    #[cfg(not(feature = "gdal"))]
+                    if is_geotiff {
+                        bail!(
+                            "{}: this build of mapview does not support GeoTIFF \
+                             (it was compiled without the 'gdal' feature)",
+                            path
+                        );
+                    }
 
                     if lower.ends_with(".mbtiles") {
                         let pool = mbtiles::open_pool(&path)?;
@@ -341,6 +439,8 @@ impl TryFrom<CliArgs> for Config {
             local_files,
             mbtiles_files,
             port: 0, // set in main() after port selection
+            #[cfg(feature = "gdal")]
+            geotiff_files,
         })
     }
 }
@@ -373,7 +473,15 @@ async fn main() -> anyhow::Result<()> {
         .merge(("port", port))
         .merge(("log_level", "off"));
 
-    let rocket = rocket::build().configure(figment).manage(config).mount(
+    #[cfg(feature = "gdal")]
+    let tiler = tiler::Tiler::new(4);
+
+    let rocket = rocket::build().configure(figment).manage(config);
+
+    #[cfg(feature = "gdal")]
+    let rocket = rocket.manage(tiler);
+
+    let rocket = rocket.mount(
         "/",
         routes![index, files, fonts, css, bundle, bundle_map, tiles, tilejson],
     );

@@ -10,7 +10,14 @@ export const VALID_GEOJSON_TYPES: string[] = [
   "GeometryCollection",
 ];
 
-export type FileKind = "geojson" | "tilejson" | "stylejson" | "pmtiles" | "mbtiles" | "shapefile";
+export type FileKind =
+  | "geojson"
+  | "tilejson"
+  | "stylejson"
+  | "pmtiles"
+  | "mbtiles"
+  | "geotiff"
+  | "shapefile";
 
 export type FileInfo = {
   kind: FileKind;

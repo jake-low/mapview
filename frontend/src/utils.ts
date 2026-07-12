@@ -127,6 +127,10 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
     case "mbtiles":
       kind = "mbtiles";
       break;
+    case "tif":
+    case "tiff":
+      kind = "geotiff";
+      break;
     default: {
       // URLs don't always have a file extension (e.g. TileJSON API endpoints),
       // so fall back to fetching the content and sniffing it
