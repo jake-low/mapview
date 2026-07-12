@@ -3,6 +3,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{self, Context, bail};
 use clap::Parser;
@@ -27,7 +28,7 @@ static FONTS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/fonts/pbf");
 
 struct Config {
     /// contents of files read from stdin, keyed by synthetic filename
-    files: HashMap<String, String>,
+    files: HashMap<String, Arc<[u8]>>,
     file_args: Vec<String>,
     /// local file paths that may be served, verbatim as passed on the command line
     local_files: HashSet<String>,
@@ -326,13 +327,12 @@ async fn tilejson(
 #[get("/files/<filename>")]
 async fn files(filename: &str, config: &State<Config>) -> Result<SeekStream<'static>, NotFound> {
     if let Some(content) = config.files.get(filename) {
-        let bytes = content.clone().into_bytes();
-        let len = bytes.len();
-        let stream = std::io::Cursor::new(bytes);
+        let content = Arc::clone(content);
+        let len = content.len() as u64;
 
         Ok(SeekStream::with_opts(
-            stream,
-            len as u64,
+            std::io::Cursor::new(content),
+            len,
             "application/octet-stream",
         ))
     } else if config.local_files.contains(filename) {
@@ -380,7 +380,7 @@ impl TryFrom<CliArgs> for Config {
             )?;
 
             let filename = "stdin.json".to_string();
-            file_data.insert(filename.clone(), stdin_content);
+            file_data.insert(filename.clone(), stdin_content.into_bytes().into());
             file_args.push(filename);
         } else {
             for file_path in &args.files {
