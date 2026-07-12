@@ -458,13 +458,25 @@ impl TryFrom<CliArgs> for Config {
 }
 
 #[get("/ws")]
-fn ws(ws: WebSocket, queue: &State<Sender<()>>) -> Stream!['static] {
+fn ws(
+    ws: WebSocket,
+    queue: &State<Sender<()>>,
+    mut shutdown: rocket::Shutdown,
+) -> Stream!['static] {
     let mut rx = queue.subscribe();
     Stream! { ws =>
         // The client never sends messages; just forward reload signals
         let _ = ws;
-        while rx.recv().await.is_ok() {
-            yield "reload".into();
+        loop {
+            rocket::tokio::select! {
+                result = rx.recv() => {
+                    if result.is_err() {
+                        break;
+                    }
+                    yield "reload".into();
+                }
+                _ = &mut shutdown => break,
+            }
         }
     }
 }
