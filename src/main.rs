@@ -521,36 +521,29 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "gdal")]
     let tiler = tiler::Tiler::new(4);
 
-    // Setup file watcher if watch mode is enabled
-    if watch_mode {
-        let watch_paths: Vec<PathBuf> = config.local_files.iter().map(PathBuf::from).collect();
+    // Set up the file watcher if watch mode is enabled. notify runs the watch on its
+    // own background thread, and keeps watching until the returned handle is dropped.
+    let _watcher = if watch_mode {
+        use notify::{RecursiveMode, Result, Watcher};
 
-        let tx_clone = tx.clone();
-
-        std::thread::spawn(move || {
-            use notify::{RecursiveMode, Result, Watcher};
-
-            let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event>| {
-                if let Ok(event) = res
-                    && (event.kind.is_modify() || event.kind.is_create())
-                {
-                    let _ = tx_clone.send(());
-                }
-            })
-            .unwrap();
-
-            for path in &watch_paths {
-                let _ = watcher.watch(path, RecursiveMode::NonRecursive);
+        let tx = tx.clone();
+        let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event>| {
+            if let Ok(event) = res
+                && (event.kind.is_modify() || event.kind.is_create())
+            {
+                let _ = tx.send(());
             }
+        })?;
 
-            // Keep the watcher alive
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(1));
-            }
-        });
-    }
+        for path in &config.local_files {
+            let _ = watcher.watch(Path::new(path), RecursiveMode::NonRecursive);
+        }
 
-    // The ws route is always mounted; without --watch it just never sends anything
+        Some(watcher)
+    } else {
+        None
+    };
+
     let rocket = rocket::build().configure(figment).manage(config).manage(tx);
 
     #[cfg(feature = "gdal")]
@@ -568,7 +561,7 @@ async fn main() -> anyhow::Result<()> {
             rtl_text_plugin,
             tiles,
             tilejson,
-            ws
+            ws // the websocket route is always mounted; without --watch it just never sends anything
         ],
     );
 
