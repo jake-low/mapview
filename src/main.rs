@@ -510,7 +510,11 @@ async fn main() -> anyhow::Result<()> {
 
     let figment = rocket::Config::figment()
         .merge(("port", port))
-        .merge(("log_level", "off"));
+        .merge(("log_level", "off"))
+        // Don't wait for active connections to drain before shutting down
+        // (this makes Ctrl-C immediate instead of stalling for a couple seconds)
+        .merge(("shutdown.grace", 0))
+        .merge(("shutdown.mercy", 0));
 
     let (tx, _rx) = channel::<()>(16);
 
