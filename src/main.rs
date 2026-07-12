@@ -59,6 +59,12 @@ fn bundle_map() -> RawJavaScript<&'static str> {
     RawJavaScript(js)
 }
 
+#[get("/mapbox-gl-rtl-text.js")]
+fn rtl_text_plugin() -> RawJavaScript<&'static str> {
+    let js = include_str!("../frontend/dist/mapbox-gl-rtl-text.js");
+    RawJavaScript(js)
+}
+
 #[derive(Responder)]
 struct FontGlyph {
     content: &'static [u8],
@@ -483,7 +489,17 @@ async fn main() -> anyhow::Result<()> {
 
     let rocket = rocket.mount(
         "/",
-        routes![index, files, fonts, css, bundle, bundle_map, tiles, tilejson],
+        routes![
+            index,
+            files,
+            fonts,
+            css,
+            bundle,
+            bundle_map,
+            rtl_text_plugin,
+            tiles,
+            tilejson
+        ],
     );
 
     let rocket = rocket.ignite().await?;

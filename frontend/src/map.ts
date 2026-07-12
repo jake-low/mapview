@@ -18,6 +18,9 @@ import type {
 } from "./types.ts";
 import { copyFeaturesAsGeoJSON } from "./utils.ts";
 
+// load RTL text support for Arabic, Hebrew, etc.
+maplibre.setRTLTextPlugin("/mapbox-gl-rtl-text.js", true);
+
 const TEXT_FONT = ["Noto Sans"];
 const TEXT_HALO_COLOR = "#000b16";
 const TEXT_HALO_WIDTH = 1;
