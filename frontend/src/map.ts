@@ -21,6 +21,9 @@ import { copyFeaturesAsGeoJSON } from "./utils.ts";
 // load RTL text support for Arabic, Hebrew, etc.
 maplibre.setRTLTextPlugin("/mapbox-gl-rtl-text.js", true);
 
+// register the pmtiles:// protocol once for all PMTiles sources
+maplibre.addProtocol("pmtiles", new Protocol().tile);
+
 const TEXT_FONT = ["Noto Sans"];
 const TEXT_HALO_COLOR = "#000b16";
 const TEXT_HALO_WIDTH = 1;
@@ -558,9 +561,6 @@ export async function initializePMTilesMap(
   url: string,
   settings?: MapSettings,
 ): Promise<MapInitResult> {
-  const protocol = new Protocol();
-  maplibre.addProtocol("pmtiles", protocol.tile);
-
   const pmtiles = new PMTiles(url);
   const header = await pmtiles.getHeader();
   const metadata = (await pmtiles.getMetadata()) as PMTilesMetadata;
