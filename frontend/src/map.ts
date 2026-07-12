@@ -104,6 +104,18 @@ export function hasHashInUrl(): boolean {
   return window.location.hash?.length > 1;
 }
 
+function isValidBounds(bounds: [number, number, number, number]): boolean {
+  const [west, south, east, north] = bounds;
+  return (
+    Number.isFinite(west) &&
+    Number.isFinite(south) &&
+    Number.isFinite(east) &&
+    Number.isFinite(north) &&
+    west <= east &&
+    south <= north
+  );
+}
+
 export function initializeMap(
   container: HTMLElement,
   options: Record<string, unknown>,
@@ -356,9 +368,9 @@ export async function initializeGeoJSONMap(
     settings,
   );
 
-  if (!hasHashInUrl()) {
-    const [west, south, east, north] = turf.bbox(geojson);
-    // TODO: make sure that bbox is valid (between -180 and 180, -90 and 90)
+  const bounds = turf.bbox(geojson) as [number, number, number, number];
+  if (!hasHashInUrl() && isValidBounds(bounds)) {
+    const [west, south, east, north] = bounds;
     map.fitBounds(
       [
         [west, south],
@@ -488,7 +500,7 @@ function initializeTileMap(
         legendData = legend;
       }
 
-      if (!hasHashInUrl() && config.bounds) {
+      if (!hasHashInUrl() && config.bounds && isValidBounds(config.bounds)) {
         const [west, south, east, north] = config.bounds;
         map.fitBounds(
           [
