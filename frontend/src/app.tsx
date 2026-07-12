@@ -3,6 +3,7 @@ import { renderer } from "@b9g/crank/dom";
 import type { AppState, FileInfo, MapCamera, MapState, URLState, ViewMode } from "./types.ts";
 import { detectFileInfo, getCoordinatePrecision } from "./utils.ts";
 import { getDefaultViewMode, MapView } from "./views.tsx";
+import { setupWatchMode } from "./watch.ts";
 
 function Toolbar({
   state,
@@ -145,6 +146,10 @@ function Toolbar({
 async function* App(this: Context): AsyncGenerator<Element> {
   const params = new URLSearchParams(window.location.search);
   const args = params.get("args");
+
+  if (params.get("watch") === "true") {
+    setupWatchMode();
+  }
 
   if (!args) {
     yield <div class="error">No file specified</div>;

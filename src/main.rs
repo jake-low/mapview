@@ -11,7 +11,9 @@ use include_dir::{Dir, include_dir};
 use rocket::State;
 use rocket::http::ContentType;
 use rocket::response::content::{RawCss, RawHtml, RawJavaScript};
+use rocket::tokio::sync::broadcast::{Sender, channel};
 use rocket_seek_stream::SeekStream;
+use rocket_ws::{Stream, WebSocket};
 
 #[macro_use]
 extern crate rocket;
@@ -349,6 +351,10 @@ async fn files(filename: &str, config: &State<Config>) -> Result<SeekStream<'sta
 pub struct CliArgs {
     /// Files to view (if none provided, reads from stdin)
     files: Vec<PathBuf>,
+
+    /// Watch files for changes and reload browser automatically
+    #[arg(long)]
+    watch: bool,
 }
 
 fn is_url(input: &str) -> bool {
@@ -451,6 +457,18 @@ impl TryFrom<CliArgs> for Config {
     }
 }
 
+#[get("/ws")]
+fn ws(ws: WebSocket, queue: &State<Sender<()>>) -> Stream!['static] {
+    let mut rx = queue.subscribe();
+    Stream! { ws =>
+        // The client never sends messages; just forward reload signals
+        let _ = ws;
+        while rx.recv().await.is_ok() {
+            yield "reload".into();
+        }
+    }
+}
+
 fn find_available_port(start_port: u16) -> anyhow::Result<u16> {
     for port in start_port..=65535 {
         if TcpListener::bind(("127.0.0.1", port)).is_ok() {
@@ -463,26 +481,61 @@ fn find_available_port(start_port: u16) -> anyhow::Result<u16> {
 #[rocket::main]
 async fn main() -> anyhow::Result<()> {
     let args = CliArgs::parse();
+    let watch_mode = args.watch;
     let mut config = Config::try_from(args)?;
 
     let port = find_available_port(3857)?;
     config.port = port;
 
     let file_list = config.file_args.join(",");
+    let watch_param = if watch_mode { "&watch=true" } else { "" };
     let url = format!(
-        "http://localhost:{}/?args={}",
+        "http://localhost:{}/?args={}{}",
         port,
-        urlencoding::encode(&file_list)
+        urlencoding::encode(&file_list),
+        watch_param
     );
 
     let figment = rocket::Config::figment()
         .merge(("port", port))
         .merge(("log_level", "off"));
 
+    let (tx, _rx) = channel::<()>(16);
+
     #[cfg(feature = "gdal")]
     let tiler = tiler::Tiler::new(4);
 
-    let rocket = rocket::build().configure(figment).manage(config);
+    // Setup file watcher if watch mode is enabled
+    if watch_mode {
+        let watch_paths: Vec<PathBuf> = config.local_files.iter().map(PathBuf::from).collect();
+
+        let tx_clone = tx.clone();
+
+        std::thread::spawn(move || {
+            use notify::{RecursiveMode, Result, Watcher};
+
+            let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event>| {
+                if let Ok(event) = res
+                    && (event.kind.is_modify() || event.kind.is_create())
+                {
+                    let _ = tx_clone.send(());
+                }
+            })
+            .unwrap();
+
+            for path in &watch_paths {
+                let _ = watcher.watch(path, RecursiveMode::NonRecursive);
+            }
+
+            // Keep the watcher alive
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+        });
+    }
+
+    // The ws route is always mounted; without --watch it just never sends anything
+    let rocket = rocket::build().configure(figment).manage(config).manage(tx);
 
     #[cfg(feature = "gdal")]
     let rocket = rocket.manage(tiler);
@@ -498,7 +551,8 @@ async fn main() -> anyhow::Result<()> {
             bundle_map,
             rtl_text_plugin,
             tiles,
-            tilejson
+            tilejson,
+            ws
         ],
     );
 
