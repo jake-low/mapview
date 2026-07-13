@@ -3,7 +3,8 @@
     "build": "esbuild src/app.tsx --bundle --sourcemap --outfile=dist/bundle.js && esbuild style.css --bundle --outfile=dist/style.css && cp node_modules/@mapbox/mapbox-gl-rtl-text/dist/mapbox-gl-rtl-text.js dist/mapbox-gl-rtl-text.js",
     "typecheck": "tsc",
     "lint": "biome lint",
-    "format": "biome check --formatter-enabled=true --linter-enabled=false --assist-enabled=true --write"
+    "format": "biome check --formatter-enabled=true --linter-enabled=false --assist-enabled=true --write",
+    "check": "tsc && biome check"
   },
   "dependencies": {
     "@b9g/crank": "^0.7.9",
