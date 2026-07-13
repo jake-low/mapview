@@ -18,7 +18,12 @@ function Toolbar({
   onSettingChange: (
     key: keyof Pick<
       AppState,
-      "showTileBoundaries" | "showCollisionBoxes" | "enableRotation" | "enablePitch" | "fullscreen"
+      | "showTileBoundaries"
+      | "showCollisionBoxes"
+      | "enableRotation"
+      | "enablePitch"
+      | "enableGlobe"
+      | "fullscreen"
     >,
     value: boolean,
   ) => void;
@@ -132,6 +137,16 @@ function Toolbar({
               />
               Pitch
             </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={state.enableGlobe}
+                onchange={(e: Event) =>
+                  onSettingChange("enableGlobe", (e.target as HTMLInputElement).checked)
+                }
+              />
+              Globe
+            </label>
           </div>
         </details>
 
@@ -201,6 +216,7 @@ async function* App(this: Context): AsyncGenerator<Element> {
       showCollisionBoxes: params.get("collisionBoxes") === "true",
       enableRotation: params.get("rotation") === "true",
       enablePitch: params.get("pitch") === "true",
+      enableGlobe: params.get("globe") === "true",
       fullscreen: params.get("fullscreen") === "true",
       camera,
       bounds,
@@ -238,6 +254,10 @@ async function* App(this: Context): AsyncGenerator<Element> {
       updates.enablePitch ? params.set("pitch", "true") : params.delete("pitch");
     }
 
+    if (updates.enableGlobe !== undefined) {
+      updates.enableGlobe ? params.set("globe", "true") : params.delete("globe");
+    }
+
     if (updates.fullscreen !== undefined) {
       updates.fullscreen ? params.set("fullscreen", "true") : params.delete("fullscreen");
     }
@@ -254,7 +274,12 @@ async function* App(this: Context): AsyncGenerator<Element> {
   const onSettingChange = (
     key: keyof Pick<
       AppState,
-      "showTileBoundaries" | "showCollisionBoxes" | "enableRotation" | "enablePitch" | "fullscreen"
+      | "showTileBoundaries"
+      | "showCollisionBoxes"
+      | "enableRotation"
+      | "enablePitch"
+      | "enableGlobe"
+      | "fullscreen"
     >,
     value: boolean,
   ) => {
@@ -317,6 +342,7 @@ async function* App(this: Context): AsyncGenerator<Element> {
             showCollisionBoxes={state.showCollisionBoxes}
             enableRotation={state.enableRotation}
             enablePitch={state.enablePitch}
+            enableGlobe={state.enableGlobe}
           />
         </main>
       </Fragment>

@@ -16,6 +16,7 @@ type MapSettings = {
   showCollisionBoxes: boolean;
   enableRotation: boolean;
   enablePitch: boolean;
+  enableGlobe: boolean;
 };
 
 type MapViewProps = {
@@ -28,11 +29,13 @@ type MapViewProps = {
   showCollisionBoxes: boolean;
   enableRotation: boolean;
   enablePitch: boolean;
+  enableGlobe: boolean;
 };
 
 function applySettings(map: MaplibreMap, settings: MapSettings) {
   map.showTileBoundaries = settings.showTileBoundaries;
   map.showCollisionBoxes = settings.showCollisionBoxes;
+  map.setProjection({ type: settings.enableGlobe ? "globe" : "mercator" });
 
   if (settings.enableRotation) {
     map.dragRotate.enable();
@@ -126,6 +129,7 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
     showCollisionBoxes,
     enableRotation,
     enablePitch,
+    enableGlobe,
   } = props;
 
   this.schedule(() => this.refresh());
@@ -146,7 +150,7 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
   const previous = {
     mode: null as ViewMode | null,
     indices: [] as number[],
-    settings: { showTileBoundaries, showCollisionBoxes, enableRotation, enablePitch },
+    settings: { showTileBoundaries, showCollisionBoxes, enableRotation, enablePitch, enableGlobe },
   };
   let swipeCleanup = null as (() => void) | null;
 
@@ -199,7 +203,13 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
     this.refresh();
 
     for (const map of maps) {
-      applySettings(map, { showTileBoundaries, showCollisionBoxes, enableRotation, enablePitch });
+      applySettings(map, {
+        showTileBoundaries,
+        showCollisionBoxes,
+        enableRotation,
+        enablePitch,
+        enableGlobe,
+      });
     }
 
     // Sync all maps
@@ -235,6 +245,7 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
         showCollisionBoxes,
         enableRotation,
         enablePitch,
+        enableGlobe,
       } = nextProps;
 
       // Update swipe mode when mode or selection changes
@@ -269,7 +280,8 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
         showTileBoundaries !== previous.settings.showTileBoundaries ||
         showCollisionBoxes !== previous.settings.showCollisionBoxes ||
         enableRotation !== previous.settings.enableRotation ||
-        enablePitch !== previous.settings.enablePitch
+        enablePitch !== previous.settings.enablePitch ||
+        enableGlobe !== previous.settings.enableGlobe
       ) {
         for (const map of maps) {
           applySettings(map, {
@@ -277,9 +289,16 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
             showCollisionBoxes,
             enableRotation,
             enablePitch,
+            enableGlobe,
           });
         }
-        previous.settings = { showTileBoundaries, showCollisionBoxes, enableRotation, enablePitch };
+        previous.settings = {
+          showTileBoundaries,
+          showCollisionBoxes,
+          enableRotation,
+          enablePitch,
+          enableGlobe,
+        };
       }
 
       // Yield the same JSX structure to keep map containers stable

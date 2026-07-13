@@ -63,6 +63,7 @@ export type URLState = {
   showCollisionBoxes: boolean;
   enableRotation: boolean;
   enablePitch: boolean;
+  enableGlobe: boolean;
   fullscreen: boolean;
 };
 
