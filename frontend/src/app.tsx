@@ -1,7 +1,7 @@
 import { type Context, type Element, Fragment } from "@b9g/crank";
 import { renderer } from "@b9g/crank/dom";
 import type { AppState, FileInfo, MapCamera, MapState, URLState, ViewMode } from "./types.ts";
-import { detectFileInfo, getCoordinatePrecision } from "./utils.ts";
+import { detectFileInfo, getCoordinatePrecision, shortenPaths } from "./utils.ts";
 import { getDefaultViewMode, MapView } from "./views.tsx";
 import { setupWatchMode } from "./watch.ts";
 
@@ -180,6 +180,10 @@ async function* App(this: Context): AsyncGenerator<Element> {
   let allFileInfos: FileInfo[] = [];
   try {
     allFileInfos = await Promise.all(filenames.map((f) => detectFileInfo(f)));
+    const shortTitles = shortenPaths(filenames);
+    for (let i = 0; i < allFileInfos.length; i++) {
+      allFileInfos[i].title = shortTitles[i];
+    }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     yield <div class="error">Error: {message}</div>;

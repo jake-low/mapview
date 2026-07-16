@@ -60,6 +60,26 @@ export function isUrl(input: string): boolean {
   return input.startsWith("http://") || input.startsWith("https://");
 }
 
+/**
+ * Shorten file paths for display: use basenames if they're all unique,
+ * otherwise fall back to the full paths (or URLs).
+ */
+export function shortenPaths(paths: string[]): string[] {
+  if (paths.length === 0) return [];
+
+  const basenames = paths.map((p) => {
+    if (isUrl(p)) return getFilenameFromUrl(p);
+    return p.split("/").filter(Boolean).pop() ?? p;
+  });
+
+  const counts = new Map<string, number>();
+  for (const b of basenames) {
+    counts.set(b, (counts.get(b) ?? 0) + 1);
+  }
+
+  return paths.map((p, i) => ((counts.get(basenames[i]) ?? 0) > 1 ? p : basenames[i]));
+}
+
 export function getFilenameFromUrl(url: string): string {
   try {
     return new URL(url).pathname.split("/").filter(Boolean).pop() || url;
