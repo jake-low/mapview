@@ -147,6 +147,15 @@ fn content_type_for_ext(ext: &str) -> Result<ContentType, NotFound> {
     }
 }
 
+fn tile_url_template(port: u16, name: &str, ext: &str) -> String {
+    // percent-encode the filename into a URL safe "key". this matches
+    // how the server endpoints work, and avoids path-like arguments
+    // being interpreted literally and causing tile requests to 404.
+    let key = urlencoding::encode(name);
+
+    format!("http://localhost:{port}/tiles/{key}/{{z}}/{{x}}/{{y}}.{ext}")
+}
+
 async fn serve_mbtiles_tile(
     pool: &mbtiles::MBTilesPool,
     z: u8,
@@ -191,10 +200,7 @@ async fn serve_mbtiles_metadata(
         "webp" => "webp",
         _ => "png",
     };
-    let tile_url = format!(
-        "http://localhost:{}/tiles/{}/{{z}}/{{x}}/{{y}}.{}",
-        port, filename, tile_ext
-    );
+    let tile_url = tile_url_template(port, filename, tile_ext);
 
     let mut tj = serde_json::json!({
         "tilejson": "3.0.0",
@@ -289,10 +295,7 @@ async fn tilejson(
     if config.geotiff_files.contains(&filename) {
         match tiler.get_metadata(&filename).await {
             Ok(metadata) => {
-                let tile_url = format!(
-                    "http://localhost:{}/tiles/{}/{{z}}/{{x}}/{{y}}.png",
-                    config.port, filename
-                );
+                let tile_url = tile_url_template(config.port, &filename, "png");
                 let tj = serde_json::json!({
                     "tilejson": "3.0.0",
                     "tiles": [tile_url],
