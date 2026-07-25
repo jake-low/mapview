@@ -291,6 +291,7 @@ export async function initializeGeoJSONMap(
       sources,
       layers,
     },
+    maxZoom: 20,
   });
 
   return new Promise((resolve) => {
@@ -382,7 +383,7 @@ function initializeTileMap(container: HTMLElement, config: TileMapConfig): Promi
     style.glyphs = "/fonts/{fontstack}/{range}.pbf";
   }
 
-  const map = new maplibre.Map({ container, style: style as any });
+  const map = new maplibre.Map({ container, style: style as any, maxZoom: 20 });
 
   return new Promise((resolve) => {
     map.on("load", () => {
