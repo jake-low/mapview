@@ -186,7 +186,8 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
       const firstMap = maps[props.selectedIndices[0]];
       const camera = Array.isArray(view)
         ? firstMap.cameraForBounds(view, { padding: FIT_PADDING })
-        : view;
+        : // MapLibre doesn't like it if a MapCamera contains `bearing: undefined` or similar
+          Object.fromEntries(Object.entries(view).filter(([_, v]) => v !== undefined));
 
       if (camera) {
         for (const map of maps) {
