@@ -177,6 +177,8 @@ async function* App(this: Context): AsyncGenerator<Element> {
     return;
   }
 
+  document.title = `mapview ${filenames.join(" ")}`;
+
   let allFileInfos: FileInfo[] = [];
   try {
     allFileInfos = await Promise.all(filenames.map((f) => detectFileInfo(f)));
