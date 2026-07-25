@@ -4,6 +4,9 @@ import { Hash } from "maplibre-gl";
 import { Legend } from "./legend.tsx";
 import { initializeMapFromFileInfo } from "./map.ts";
 import type { FileInfo, LayerGroup, MapState, ViewMode } from "./types.ts";
+import { getInitialView, parseHash } from "./utils.ts";
+
+const FIT_PADDING = 50;
 
 export function getDefaultViewMode(fileCount: number): ViewMode {
   if (fileCount === 1) return "single";
@@ -150,53 +153,73 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
   const previous = {
     mode: null as ViewMode | null,
     indices: [] as number[],
-    settings: { showTileBoundaries, showCollisionBoxes, enableRotation, enablePitch, enableGlobe },
+    settings: {
+      showTileBoundaries,
+      showCollisionBoxes,
+      enableRotation,
+      enablePitch,
+      enableGlobe,
+    },
   };
   let swipeCleanup = null as (() => void) | null;
 
   // Initialize maps after DOM is mounted
   requestAnimationFrame(async () => {
-    for (let i = 0; i < allFileInfos.length; i++) {
-      const container = viewElement.querySelector(`#map-${i}`) as HTMLElement;
-      if (!container) {
-        throw new Error(`Map container map-${i} not found`);
-      }
+    const view = parseHash() ?? getInitialView(allFileInfos);
 
-      const result = await initializeMapFromFileInfo(container, allFileInfos[i], {
-        enableRotation,
-        enablePitch,
-      });
-      maps.push(result.map);
-      legendData.push(result.legendData);
+    const results = await Promise.all(
+      allFileInfos.map((fileInfo, i) => {
+        const container = viewElement.querySelector(`#map-${i}`) as HTMLElement;
+        if (!container) {
+          throw new Error(`Map container map-${i} not found`);
+        }
 
-      // The URL hash and toolbar position info are bound to the state of the first
-      // map, even if that map is not on screen. This works because all maps are always
-      // kept in sync, even when they are not all visible.
-      if (i === 0) {
-        new Hash().addTo(result.map);
-        if (onMapMove) {
-          const updatePosition = () => {
-            const center = result.map.getCenter();
-            const bounds = result.map.getBounds();
-            const zoom = result.map.getZoom();
-            const bearing = result.map.getBearing();
-            const pitch = result.map.getPitch();
+        return initializeMapFromFileInfo(container, fileInfo);
+      }),
+    );
 
-            onMapMove({
-              camera: {
-                zoom,
-                center: [center.lng, center.lat],
-                bearing: bearing !== 0 ? bearing : undefined,
-                pitch: pitch !== 0 ? pitch : undefined,
-              },
-              bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
-            });
-          };
-          result.map.on("move", updatePosition);
-          result.map.on("zoom", updatePosition);
-          result.map.once("load", updatePosition);
+    maps.push(...results.map((result) => result.map));
+    legendData.push(...results.map((result) => result.legendData));
+
+    if (view) {
+      // resolve bounds to camera just once, to be sure camera is identical for all maps
+      const firstMap = maps[props.selectedIndices[0]];
+      const camera = Array.isArray(view)
+        ? firstMap.cameraForBounds(view, { padding: FIT_PADDING })
+        : view;
+
+      if (camera) {
+        for (const map of maps) {
+          map.jumpTo(camera);
         }
       }
+    }
+
+    // The URL hash and toolbar position info are bound to the state of the first
+    // map, even if that map is not on screen. This works because all maps are always
+    // kept in sync, even when they are not all visible.
+    new Hash().addTo(maps[0]);
+    if (onMapMove) {
+      const updatePosition = () => {
+        const center = maps[0].getCenter();
+        const bounds = maps[0].getBounds();
+        const zoom = maps[0].getZoom();
+        const bearing = maps[0].getBearing();
+        const pitch = maps[0].getPitch();
+
+        onMapMove({
+          camera: {
+            zoom,
+            center: [center.lng, center.lat],
+            bearing: bearing !== 0 ? bearing : undefined,
+            pitch: pitch !== 0 ? pitch : undefined,
+          },
+          bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+        });
+      };
+      maps[0].on("move", updatePosition);
+      maps[0].on("zoom", updatePosition);
+      updatePosition();
     }
 
     // Trigger initial refresh to render legends

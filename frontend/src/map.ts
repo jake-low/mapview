@@ -1,7 +1,6 @@
-import * as turf from "@turf/turf";
 import type { GeoJSON } from "geojson";
 import maplibre, { type ExpressionSpecification, type Map as MaplibreMap } from "maplibre-gl";
-import { PMTiles, Protocol } from "pmtiles";
+import { Protocol } from "pmtiles";
 import { basemaps, setupBasemapSwitcher } from "./basemap.ts";
 import { setupContextMenu } from "./contextmenu.ts";
 import { setupMeasurementTool } from "./measurement.ts";
@@ -12,7 +11,7 @@ import type {
   FileInfo,
   LayerGroup,
   MapInitResult,
-  PMTilesMetadata,
+  PMTilesInfo,
   StyleJSON,
   TileJSON,
 } from "./types.ts";
@@ -52,11 +51,6 @@ const LAYER_COLORS = [
   "#f9e2af",
 ];
 
-type MapSettings = {
-  enableRotation?: boolean;
-  enablePitch?: boolean;
-};
-
 function dimmable(color: string, dimmedColor: string): ExpressionSpecification {
   return [
     "case",
@@ -86,66 +80,6 @@ function labelPaint(color: string) {
     "text-halo-width": TEXT_HALO_WIDTH,
     "text-halo-blur": TEXT_HALO_BLUR,
   };
-}
-
-export function parseHash(): {
-  center: [number, number];
-  zoom: number;
-  bearing: number;
-  pitch: number;
-} | null {
-  const hash = window.location.hash.replace("#", "");
-  if (!hash) return null;
-
-  const [zoom, lat, lon, bearing, pitch] = hash.split("/").map(Number);
-  if (Number.isNaN(zoom) || Number.isNaN(lon) || Number.isNaN(lat)) return null;
-
-  return { center: [lon, lat], zoom, bearing: bearing ?? 0, pitch: pitch ?? 0 };
-}
-
-export function hasHashInUrl(): boolean {
-  return window.location.hash?.length > 1;
-}
-
-function isValidBounds(bounds: [number, number, number, number]): boolean {
-  const [west, south, east, north] = bounds;
-  return (
-    Number.isFinite(west) &&
-    Number.isFinite(south) &&
-    Number.isFinite(east) &&
-    Number.isFinite(north) &&
-    west <= east &&
-    south <= north
-  );
-}
-
-export function initializeMap(
-  container: HTMLElement,
-  options: Record<string, unknown>,
-  settings?: MapSettings,
-): MaplibreMap {
-  const hashPos = parseHash();
-  const mapOptions: Record<string, unknown> = { container, ...options };
-  if (hashPos) {
-    mapOptions.center = hashPos.center;
-    mapOptions.zoom = hashPos.zoom;
-    mapOptions.bearing = hashPos.bearing;
-    mapOptions.pitch = hashPos.pitch;
-  }
-
-  const map = new maplibre.Map(mapOptions as any);
-
-  if (!settings?.enablePitch) {
-    map.setMaxPitch(0);
-  }
-
-  if (!settings?.enableRotation) {
-    map.dragRotate.disable();
-    map.touchZoomRotate.disableRotation();
-    map.keyboard.disableRotation();
-  }
-
-  return map;
 }
 
 function setupMapInteractions(
@@ -314,16 +248,8 @@ export function createVectorLayers(
 export async function initializeStyleMap(
   container: HTMLElement,
   stylejson: StyleJSON,
-  settings?: MapSettings,
 ): Promise<MapInitResult> {
-  const map = initializeMap(
-    container,
-    {
-      style: stylejson,
-      maxZoom: 20,
-    },
-    settings,
-  );
+  const map = new maplibre.Map({ container, style: stylejson as any, maxZoom: 20 });
 
   return new Promise((resolve) => {
     map.on("load", () => {
@@ -337,7 +263,6 @@ export async function initializeStyleMap(
 export async function initializeGeoJSONMap(
   container: HTMLElement,
   geojson: GeoJSON,
-  settings?: MapSettings,
 ): Promise<MapInitResult> {
   const sources: Record<string, any> = {};
   const layers: any[] = [];
@@ -359,32 +284,14 @@ export async function initializeGeoJSONMap(
     });
   }
 
-  const map = initializeMap(
+  const map = new maplibre.Map({
     container,
-    {
-      style: {
-        version: 8,
-        sources,
-        layers,
-      },
+    style: {
+      version: 8,
+      sources,
+      layers,
     },
-    settings,
-  );
-
-  const bounds = turf.bbox(geojson) as [number, number, number, number];
-  if (!hasHashInUrl() && isValidBounds(bounds)) {
-    const [west, south, east, north] = bounds;
-    map.fitBounds(
-      [
-        [west, south],
-        [east, north],
-      ],
-      {
-        padding: 20,
-        animate: false,
-      },
-    );
-  }
+  });
 
   return new Promise((resolve) => {
     map.on("load", () => {
@@ -444,14 +351,9 @@ type TileMapConfig = {
   isRaster: boolean;
   source: Record<string, unknown>;
   layerNames: string[];
-  bounds?: [number, number, number, number];
 };
 
-function initializeTileMap(
-  container: HTMLElement,
-  config: TileMapConfig,
-  settings?: MapSettings,
-): Promise<MapInitResult> {
+function initializeTileMap(container: HTMLElement, config: TileMapConfig): Promise<MapInitResult> {
   const style: Record<string, unknown> = {
     version: 8,
     sources: {
@@ -480,7 +382,7 @@ function initializeTileMap(
     style.glyphs = "/fonts/{fontstack}/{range}.pbf";
   }
 
-  const map = initializeMap(container, { style }, settings);
+  const map = new maplibre.Map({ container, style: style as any });
 
   return new Promise((resolve) => {
     map.on("load", () => {
@@ -500,20 +402,6 @@ function initializeTileMap(
         legendData = legend;
       }
 
-      if (!hasHashInUrl() && config.bounds && isValidBounds(config.bounds)) {
-        const [west, south, east, north] = config.bounds;
-        map.fitBounds(
-          [
-            [west, south],
-            [east, north],
-          ],
-          {
-            padding: 20,
-            animate: false,
-          },
-        );
-      }
-
       resolve({ map, legendData });
     });
   });
@@ -522,7 +410,6 @@ function initializeTileMap(
 export async function initializeTileJSONMap(
   container: HTMLElement,
   tilejson: TileJSON,
-  settings?: MapSettings,
 ): Promise<MapInitResult> {
   // Detect raster TileJSON by checking tile URL extensions
   const tileUrl = tilejson.tiles?.[0]?.toLowerCase() ?? "";
@@ -541,26 +428,19 @@ export async function initializeTileJSONMap(
     source.tileSize = tilejson.tileSize ?? 512;
   }
 
-  return initializeTileMap(
-    container,
-    {
-      isRaster,
-      source,
-      layerNames: tilejson.vector_layers?.map((layer) => layer.id) ?? [],
-      bounds: tilejson.bounds?.length === 4 ? tilejson.bounds : undefined,
-    },
-    settings,
-  );
+  return initializeTileMap(container, {
+    isRaster,
+    source,
+    layerNames: tilejson.vector_layers?.map((layer) => layer.id) ?? [],
+  });
 }
 
 export async function initializePMTilesMap(
   container: HTMLElement,
   url: string,
-  settings?: MapSettings,
+  info: PMTilesInfo,
 ): Promise<MapInitResult> {
-  const pmtiles = new PMTiles(url);
-  const header = await pmtiles.getHeader();
-  const metadata = (await pmtiles.getMetadata()) as PMTilesMetadata;
+  const { header, metadata } = info;
   const isRaster = header.tileType !== 1; // 1 = MVT
 
   let layerNames: string[] = [];
@@ -583,61 +463,25 @@ export async function initializePMTilesMap(
     source.tileSize = metadata.tileSize ?? 512;
   }
 
-  return initializeTileMap(
-    container,
-    {
-      isRaster,
-      source,
-      layerNames,
-      bounds: [header.minLon, header.minLat, header.maxLon, header.maxLat],
-    },
-    settings,
-  );
-}
-
-/** MBTiles and GeoTIFF files are tiled server-side; the server exposes their TileJSON */
-async function fetchTileJSON(url: string): Promise<TileJSON> {
-  const response = await fetch(`${url}/metadata.json`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch tile metadata: ${response.status}`);
-  }
-  return response.json();
-}
-
-export async function initializeMBTilesMap(
-  container: HTMLElement,
-  url: string,
-  settings?: MapSettings,
-): Promise<MapInitResult> {
-  return initializeTileJSONMap(container, await fetchTileJSON(url), settings);
-}
-
-export async function initializeGeoTIFFMap(
-  container: HTMLElement,
-  url: string,
-  settings?: MapSettings,
-): Promise<MapInitResult> {
-  return initializeTileJSONMap(container, await fetchTileJSON(url), settings);
+  return initializeTileMap(container, { isRaster, source, layerNames });
 }
 
 export async function initializeMapFromFileInfo(
   container: HTMLElement,
   fileInfo: FileInfo,
-  settings?: MapSettings,
 ): Promise<MapInitResult> {
   switch (fileInfo.kind) {
     case "stylejson":
-      return initializeStyleMap(container, fileInfo.data as StyleJSON, settings);
+      return initializeStyleMap(container, fileInfo.data as StyleJSON);
     case "geojson":
     case "shapefile":
-      return initializeGeoJSONMap(container, fileInfo.data as GeoJSON, settings);
+      return initializeGeoJSONMap(container, fileInfo.data as GeoJSON);
+    // MBTiles and GeoTIFF files are tiled server-side, which exposes their TileJSON
     case "tilejson":
-      return initializeTileJSONMap(container, fileInfo.data as TileJSON, settings);
-    case "pmtiles":
-      return initializePMTilesMap(container, fileInfo.url, settings);
     case "mbtiles":
-      return initializeMBTilesMap(container, fileInfo.url, settings);
     case "geotiff":
-      return initializeGeoTIFFMap(container, fileInfo.url, settings);
+      return initializeTileJSONMap(container, fileInfo.data as TileJSON);
+    case "pmtiles":
+      return initializePMTilesMap(container, fileInfo.url, fileInfo.data as PMTilesInfo);
   }
 }

@@ -19,11 +19,14 @@ export type FileKind =
   | "geotiff"
   | "shapefile";
 
+export type Bounds = [number, number, number, number];
+
 export type FileInfo = {
   kind: FileKind;
   title: string;
   data: unknown;
   url: string;
+  view?: InitialView;
 };
 
 export type TileJSON = {
@@ -31,7 +34,7 @@ export type TileJSON = {
   tiles: Array<string>;
   attribution?: string;
   vector_layers?: Array<{ id: string }>;
-  bounds?: [number, number, number, number];
+  bounds?: Bounds;
   minzoom?: number;
   maxzoom?: number;
   tileSize?: number; // not part of TileJSON spec but added by several implementations
@@ -47,11 +50,20 @@ export type PMTilesMetadata = {
   tileSize?: number;
 };
 
+export type PMTilesInfo = {
+  header: import("pmtiles").Header;
+  metadata: PMTilesMetadata;
+};
+
 export type StyleJSON = {
   version: number;
   sources: Record<string, unknown>;
   layers: Array<unknown>;
   glyphs?: string;
+  center?: [number, number];
+  zoom?: number;
+  bearing?: number;
+  pitch?: number;
 };
 
 export type ViewMode = "single" | "swipe" | "tile";
@@ -76,8 +88,10 @@ export type MapCamera = {
 
 export type MapState = {
   camera?: MapCamera;
-  bounds?: [number, number, number, number];
+  bounds?: Bounds;
 };
+
+export type InitialView = MapCamera | Bounds;
 
 export type AppState = URLState & MapState;
 

@@ -1,7 +1,20 @@
 import { gpx, kml } from "@tmcw/togeojson";
+import * as turf from "@turf/turf";
+import type { GeoJSON } from "geojson";
 import type { MapGeoJSONFeature } from "maplibre-gl";
+import { PMTiles } from "pmtiles";
 import * as shapefile from "shapefile";
-import { type FileInfo, type FileKind, VALID_GEOJSON_TYPES } from "./types.ts";
+import {
+  type Bounds,
+  type FileInfo,
+  type FileKind,
+  type InitialView,
+  type MapCamera,
+  type PMTilesInfo,
+  type StyleJSON,
+  type TileJSON,
+  VALID_GEOJSON_TYPES,
+} from "./types.ts";
 
 /*
  * How many decimal places should be shown for longitude and latitude values in the UI?
@@ -141,14 +154,20 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
       kind = "geojson";
       break;
     }
-    case "pmtiles":
+    case "pmtiles": {
+      const pmtiles = new PMTiles(url);
+      const [header, metadata] = await Promise.all([pmtiles.getHeader(), pmtiles.getMetadata()]);
+      data = { header, metadata } as PMTilesInfo;
       kind = "pmtiles";
       break;
+    }
     case "mbtiles":
+      data = await fetchTileJSON(url);
       kind = "mbtiles";
       break;
     case "tif":
     case "tiff":
+      data = await fetchTileJSON(url);
       kind = "geotiff";
       break;
     default: {
@@ -167,5 +186,86 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
     }
   }
 
-  return { kind, title, data, url };
+  return { kind, title, data, url, view: getFileView(kind, data) };
+}
+
+/** MBTiles and GeoTIFF files are tiled server-side; the server exposes their TileJSON */
+async function fetchTileJSON(url: string): Promise<TileJSON> {
+  const response = await fetch(`${url}/metadata.json`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch tile metadata: ${response.status}`);
+  }
+  return response.json();
+}
+
+function isValidBounds(bounds: Bounds): boolean {
+  const [west, south, east, north] = bounds;
+  return (
+    Number.isFinite(west) &&
+    Number.isFinite(south) &&
+    Number.isFinite(east) &&
+    Number.isFinite(north) &&
+    west <= east &&
+    south <= north
+  );
+}
+
+function getFileView(kind: FileKind, data: unknown): InitialView | undefined {
+  switch (kind) {
+    case "geojson":
+    case "shapefile": {
+      const bounds = turf.bbox(data as GeoJSON) as Bounds;
+      return isValidBounds(bounds) ? bounds : undefined;
+    }
+    case "tilejson":
+    case "mbtiles":
+    case "geotiff": {
+      const { bounds } = data as TileJSON;
+      return bounds?.length === 4 && isValidBounds(bounds) ? bounds : undefined;
+    }
+    case "pmtiles": {
+      const { header } = data as PMTilesInfo;
+      const bounds: Bounds = [header.minLon, header.minLat, header.maxLon, header.maxLat];
+      return isValidBounds(bounds) ? bounds : undefined;
+    }
+    case "stylejson": {
+      const { center, zoom, bearing, pitch } = data as StyleJSON;
+      if (center === undefined && zoom === undefined) return undefined;
+      return { center: center ?? [0, 0], zoom: zoom ?? 0, bearing, pitch };
+    }
+  }
+}
+
+/** The camera encoded in the URL hash (as written by maplibre's Hash control), if any */
+export function parseHash(): MapCamera | null {
+  const hash = window.location.hash.replace("#", "");
+  if (!hash) return null;
+
+  const [zoom, lat, lon, bearing, pitch] = hash.split("/").map(Number);
+  if (Number.isNaN(zoom) || Number.isNaN(lon) || Number.isNaN(lat)) return null;
+
+  return { center: [lon, lat], zoom, bearing: bearing ?? 0, pitch: pitch ?? 0 };
+}
+
+/**
+ * The view that every map should start at: the union of the bounds suggested by the
+ * files being viewed, or if none of them suggest bounds, the first camera suggested.
+ */
+export function getInitialView(fileInfos: FileInfo[]): InitialView | undefined {
+  let union: Bounds | undefined;
+  for (const { view } of fileInfos) {
+    if (view && Array.isArray(view)) {
+      const [west, south, east, north] = view;
+      union = union
+        ? [
+            Math.min(union[0], west),
+            Math.min(union[1], south),
+            Math.max(union[2], east),
+            Math.max(union[3], north),
+          ]
+        : [west, south, east, north];
+    }
+  }
+
+  return union ?? fileInfos.find((info) => info.view)?.view;
 }
