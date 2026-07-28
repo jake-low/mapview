@@ -6,6 +6,7 @@ import { PMTiles } from "pmtiles";
 import * as shapefile from "shapefile";
 import {
   type Bounds,
+  type DataLayer,
   type FileInfo,
   type FileKind,
   type InitialView,
@@ -186,7 +187,14 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
     }
   }
 
-  return { kind, title, data, url, view: getFileView(kind, data) };
+  return {
+    kind,
+    title,
+    data,
+    url,
+    view: getFileView(kind, data),
+    layers: getFileLayers(kind, data),
+  };
 }
 
 /** MBTiles and GeoTIFF files are tiled server-side; the server exposes their TileJSON */
@@ -208,6 +216,59 @@ function isValidBounds(bounds: Bounds): boolean {
     west <= east &&
     south <= north
   );
+}
+
+const LAYER_COLORS = [
+  "#f4b8e4",
+  "#babbf1",
+  "#a6d189",
+  "#85c1dc",
+  "#81c8be",
+  "#a6e3a1",
+  "#cfc9c2",
+  "#f38ba8",
+  "#bb9af7",
+  "#f2d5cf",
+  "#9ece6a",
+  "#f9e2af",
+];
+
+export function isRasterTiles(kind: FileKind, data: unknown): boolean {
+  switch (kind) {
+    case "pmtiles":
+      return (data as PMTilesInfo).header.tileType !== 1; // 1 = MVT
+    case "tilejson":
+    case "mbtiles":
+    case "geotiff": {
+      const tileUrl = (data as TileJSON).tiles?.[0]?.toLowerCase() ?? "";
+      return /\.(png|jpe?g|webp)(\?|$)/.test(tileUrl);
+    }
+    default:
+      return false;
+  }
+}
+
+function getFileLayers(kind: FileKind, data: unknown): DataLayer[] | undefined {
+  if (isRasterTiles(kind, data)) return undefined;
+
+  let names: string[] | undefined;
+  switch (kind) {
+    case "tilejson":
+    case "mbtiles":
+    case "geotiff":
+      names = (data as TileJSON).vector_layers?.map((layer) => layer.id);
+      break;
+    case "pmtiles": {
+      const { metadata } = data as PMTilesInfo;
+      names =
+        metadata.vector_layers?.map((layer) => layer.id) ??
+        metadata.tilestats?.layers.map((layer) => layer.layer);
+      break;
+    }
+  }
+
+  if (!names?.length) return undefined;
+  return names.map((name, i) => ({ name, color: LAYER_COLORS[i % LAYER_COLORS.length] }));
 }
 
 function getFileView(kind: FileKind, data: unknown): InitialView | undefined {

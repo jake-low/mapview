@@ -27,6 +27,7 @@ export type FileInfo = {
   data: unknown;
   url: string;
   view?: InitialView;
+  layers?: DataLayer[];
 };
 
 export type TileJSON = {
@@ -95,13 +96,7 @@ export type InitialView = MapCamera | Bounds;
 
 export type AppState = URLState & MapState;
 
-export type LayerGroup = {
+export type DataLayer = {
   name: string;
-  layerIds: string[];
   color: string;
-};
-
-export type MapInitResult = {
-  map: import("maplibre-gl").Map;
-  legendData?: LayerGroup[];
 };

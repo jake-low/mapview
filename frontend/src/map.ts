@@ -7,15 +7,8 @@ import { setupMeasurementTool } from "./measurement.ts";
 import { setupFeatureHighlighting, setupHoverPopup } from "./popups.tsx";
 import { registerSearchableMap } from "./search.ts";
 import { setupStatsWidget } from "./stats.ts";
-import type {
-  FileInfo,
-  LayerGroup,
-  MapInitResult,
-  PMTilesInfo,
-  StyleJSON,
-  TileJSON,
-} from "./types.ts";
-import { copyFeaturesAsGeoJSON } from "./utils.ts";
+import type { DataLayer, FileInfo, PMTilesInfo, StyleJSON, TileJSON } from "./types.ts";
+import { copyFeaturesAsGeoJSON, isRasterTiles } from "./utils.ts";
 
 // load RTL text support for Arabic, Hebrew, etc.
 maplibre.setRTLTextPlugin("/mapbox-gl-rtl-text.js", true);
@@ -35,21 +28,6 @@ const DIMMED_FILL_COLOR = "#323b44";
 const DIMMED_LINE_COLOR = "#19232d";
 const DIMMED_CIRCLE_COLOR = "#19232d";
 const DIMMED_TEXT_COLOR = "#323b44";
-
-const LAYER_COLORS = [
-  "#f4b8e4",
-  "#babbf1",
-  "#a6d189",
-  "#85c1dc",
-  "#81c8be",
-  "#a6e3a1",
-  "#cfc9c2",
-  "#f38ba8",
-  "#bb9af7",
-  "#f2d5cf",
-  "#9ece6a",
-  "#f9e2af",
-];
 
 function dimmable(color: string, dimmedColor: string): ExpressionSpecification {
   return [
@@ -117,19 +95,22 @@ const VECTOR_LAYER_SUFFIXES = [
   "polygon_labels",
 ];
 
-export function createVectorLayers(
-  map: MaplibreMap,
-  sourceName: string,
-  layerNames: string[],
-): { layerIds: string[]; layerColors: Map<string, string>; legend: LayerGroup[] } {
-  const layerColors = new Map<string, string>(
-    layerNames.map((name, i) => [name, LAYER_COLORS[i % LAYER_COLORS.length]]),
-  );
+/** The ids of the map layers drawn for one of a file's data layers */
+function mapLayerIds(name: string): string[] {
+  return VECTOR_LAYER_SUFFIXES.map((suffix) => `${name}_${suffix}`);
+}
 
+/** Show or hide every map layer drawn for one of a file's data layers */
+export function setDataLayerVisibility(map: MaplibreMap, name: string, visible: boolean): void {
+  for (const layerId of mapLayerIds(name)) {
+    map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
+  }
+}
+
+function addVectorLayers(map: MaplibreMap, sourceName: string, layers: DataLayer[]): void {
   // Layers are added in passes (all polygons, then all lines, etc) so that
   // lines draw above polygons, points above lines, and labels above everything.
-  for (const layerName of layerNames) {
-    const color = layerColors.get(layerName)!;
+  for (const { name: layerName, color } of layers) {
     map.addLayer({
       id: `${layerName}_polygons`,
       type: "fill",
@@ -144,8 +125,7 @@ export function createVectorLayers(
     });
   }
 
-  for (const layerName of layerNames) {
-    const color = layerColors.get(layerName)!;
+  for (const { name: layerName, color } of layers) {
     map.addLayer({
       id: `${layerName}_lines`,
       type: "line",
@@ -159,8 +139,7 @@ export function createVectorLayers(
     });
   }
 
-  for (const layerName of layerNames) {
-    const color = layerColors.get(layerName)!;
+  for (const { name: layerName, color } of layers) {
     map.addLayer({
       id: `${layerName}_points`,
       type: "circle",
@@ -177,8 +156,7 @@ export function createVectorLayers(
     });
   }
 
-  for (const layerName of layerNames) {
-    const color = layerColors.get(layerName)!;
+  for (const { name: layerName, color } of layers) {
     map.addLayer({
       id: `${layerName}_point_labels`,
       type: "symbol",
@@ -231,39 +209,20 @@ export function createVectorLayers(
       paint: labelPaint(color),
     });
   }
-
-  const legend = layerNames.map((name) => ({
-    name,
-    layerIds: VECTOR_LAYER_SUFFIXES.map((suffix) => `${name}_${suffix}`),
-    color: layerColors.get(name)!,
-  }));
-
-  return {
-    layerIds: legend.flatMap((group) => group.layerIds),
-    layerColors,
-    legend,
-  };
 }
 
-export async function initializeStyleMap(
-  container: HTMLElement,
-  stylejson: StyleJSON,
-): Promise<MapInitResult> {
+export function initializeStyleMap(container: HTMLElement, stylejson: StyleJSON): MaplibreMap {
   const map = new maplibre.Map({ container, style: stylejson as any, maxZoom: 20 });
 
-  return new Promise((resolve) => {
-    map.on("load", () => {
-      map.setGlobalStateProperty("searchActive", false);
-      setupMapInteractions(map, { showLayers: true });
-      resolve({ map });
-    });
+  map.on("load", () => {
+    map.setGlobalStateProperty("searchActive", false);
+    setupMapInteractions(map, { showLayers: true });
   });
+
+  return map;
 }
 
-export async function initializeGeoJSONMap(
-  container: HTMLElement,
-  geojson: GeoJSON,
-): Promise<MapInitResult> {
+export function initializeGeoJSONMap(container: HTMLElement, geojson: GeoJSON): MaplibreMap {
   const sources: Record<string, any> = {};
   const layers: any[] = [];
 
@@ -294,67 +253,66 @@ export async function initializeGeoJSONMap(
     maxZoom: 20,
   });
 
-  return new Promise((resolve) => {
-    map.on("load", () => {
-      map.setGlobalStateProperty("searchActive", false);
-      map.addSource("geojson-data", {
-        type: "geojson",
-        data: geojson,
-      });
-
-      map.addLayer({
-        id: "geojson-fill",
-        type: "fill",
-        source: "geojson-data",
-        filter: ["==", ["geometry-type"], "Polygon"],
-        paint: {
-          "fill-color": dimmable("#088", DIMMED_FILL_COLOR),
-          "fill-opacity": hoverable(0.6, 0.4),
-        },
-      });
-
-      map.addLayer({
-        id: "geojson-line",
-        type: "line",
-        source: "geojson-data",
-        filter: ["==", ["geometry-type"], "LineString"],
-        paint: {
-          "line-color": dimmable("#088", DIMMED_LINE_COLOR),
-          "line-width": hoverable(4, 2),
-        },
-      });
-
-      map.addLayer({
-        id: "geojson-point",
-        type: "circle",
-        source: "geojson-data",
-        filter: ["==", ["geometry-type"], "Point"],
-        paint: {
-          "circle-color": dimmable("#088", DIMMED_CIRCLE_COLOR),
-          "circle-radius": 6,
-          "circle-opacity": 1,
-          "circle-stroke-color": "#fff",
-          "circle-stroke-width": hoverable(3, 2),
-        },
-      });
-
-      const layers = ["geojson-fill", "geojson-line", "geojson-point"];
-      setupMapInteractions(map, { layers, enableHighlighting: true });
-      registerSearchableMap(map, layers);
-      setupBasemapSwitcher(map, container);
-      setupStatsWidget(container, geojson);
-      resolve({ map });
+  map.on("load", () => {
+    map.setGlobalStateProperty("searchActive", false);
+    map.addSource("geojson-data", {
+      type: "geojson",
+      data: geojson,
     });
+
+    map.addLayer({
+      id: "geojson-fill",
+      type: "fill",
+      source: "geojson-data",
+      filter: ["==", ["geometry-type"], "Polygon"],
+      paint: {
+        "fill-color": dimmable("#088", DIMMED_FILL_COLOR),
+        "fill-opacity": hoverable(0.6, 0.4),
+      },
+    });
+
+    map.addLayer({
+      id: "geojson-line",
+      type: "line",
+      source: "geojson-data",
+      filter: ["==", ["geometry-type"], "LineString"],
+      paint: {
+        "line-color": dimmable("#088", DIMMED_LINE_COLOR),
+        "line-width": hoverable(4, 2),
+      },
+    });
+
+    map.addLayer({
+      id: "geojson-point",
+      type: "circle",
+      source: "geojson-data",
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: {
+        "circle-color": dimmable("#088", DIMMED_CIRCLE_COLOR),
+        "circle-radius": 6,
+        "circle-opacity": 1,
+        "circle-stroke-color": "#fff",
+        "circle-stroke-width": hoverable(3, 2),
+      },
+    });
+
+    const layers = ["geojson-fill", "geojson-line", "geojson-point"];
+    setupMapInteractions(map, { layers, enableHighlighting: true });
+    registerSearchableMap(map, layers);
+    setupBasemapSwitcher(map, container);
+    setupStatsWidget(container, geojson);
   });
+
+  return map;
 }
 
 type TileMapConfig = {
   isRaster: boolean;
   source: Record<string, unknown>;
-  layerNames: string[];
+  layers?: DataLayer[];
 };
 
-function initializeTileMap(container: HTMLElement, config: TileMapConfig): Promise<MapInitResult> {
+function initializeTileMap(container: HTMLElement, config: TileMapConfig): MaplibreMap {
   const style: Record<string, unknown> = {
     version: 8,
     sources: {
@@ -385,36 +343,29 @@ function initializeTileMap(container: HTMLElement, config: TileMapConfig): Promi
 
   const map = new maplibre.Map({ container, style: style as any, maxZoom: 20 });
 
-  return new Promise((resolve) => {
-    map.on("load", () => {
-      map.setGlobalStateProperty("searchActive", false);
-      let legendData: LayerGroup[] | undefined;
+  map.on("load", () => {
+    map.setGlobalStateProperty("searchActive", false);
 
-      if (config.isRaster) {
-        setupMapInteractions(map);
-      } else {
-        const { layerIds, layerColors, legend } = createVectorLayers(
-          map,
-          "tiles",
-          config.layerNames,
-        );
-        setupMapInteractions(map, { layers: layerIds, layerColors, enableHighlighting: true });
-        registerSearchableMap(map, layerIds);
-        legendData = legend;
-      }
+    const { layers } = config;
+    if (!layers) {
+      setupMapInteractions(map);
+      return;
+    }
 
-      resolve({ map, legendData });
-    });
+    addVectorLayers(map, "tiles", layers);
+
+    const layerIds = layers.flatMap(({ name }) => mapLayerIds(name));
+    const layerColors = new Map(layers.map(({ name, color }) => [name, color]));
+    setupMapInteractions(map, { layers: layerIds, layerColors, enableHighlighting: true });
+    registerSearchableMap(map, layerIds);
   });
+
+  return map;
 }
 
-export async function initializeTileJSONMap(
-  container: HTMLElement,
-  tilejson: TileJSON,
-): Promise<MapInitResult> {
-  // Detect raster TileJSON by checking tile URL extensions
-  const tileUrl = tilejson.tiles?.[0]?.toLowerCase() ?? "";
-  const isRaster = /\.(png|jpe?g|webp)(\?|$)/.test(tileUrl);
+function initializeTileJSONMap(container: HTMLElement, fileInfo: FileInfo): MaplibreMap {
+  const tilejson = fileInfo.data as TileJSON;
+  const isRaster = isRasterTiles(fileInfo.kind, tilejson);
 
   const source: Record<string, unknown> = {
     type: isRaster ? "raster" : "vector",
@@ -429,33 +380,16 @@ export async function initializeTileJSONMap(
     source.tileSize = tilejson.tileSize ?? 512;
   }
 
-  return initializeTileMap(container, {
-    isRaster,
-    source,
-    layerNames: tilejson.vector_layers?.map((layer) => layer.id) ?? [],
-  });
+  return initializeTileMap(container, { isRaster, source, layers: fileInfo.layers });
 }
 
-export async function initializePMTilesMap(
-  container: HTMLElement,
-  url: string,
-  info: PMTilesInfo,
-): Promise<MapInitResult> {
-  const { header, metadata } = info;
-  const isRaster = header.tileType !== 1; // 1 = MVT
-
-  let layerNames: string[] = [];
-  if (!isRaster) {
-    if (metadata.vector_layers) {
-      layerNames = metadata.vector_layers.map((layer) => layer.id);
-    } else if (metadata.tilestats?.layers) {
-      layerNames = metadata.tilestats.layers.map((layer) => layer.layer);
-    }
-  }
+function initializePMTilesMap(container: HTMLElement, fileInfo: FileInfo): MaplibreMap {
+  const { metadata } = fileInfo.data as PMTilesInfo;
+  const isRaster = isRasterTiles(fileInfo.kind, fileInfo.data);
 
   const source: Record<string, unknown> = {
     type: isRaster ? "raster" : "vector",
-    url: `pmtiles://${url}`,
+    url: `pmtiles://${fileInfo.url}`,
   };
   if (metadata.attribution) {
     source.attribution = metadata.attribution;
@@ -464,13 +398,10 @@ export async function initializePMTilesMap(
     source.tileSize = metadata.tileSize ?? 512;
   }
 
-  return initializeTileMap(container, { isRaster, source, layerNames });
+  return initializeTileMap(container, { isRaster, source, layers: fileInfo.layers });
 }
 
-export async function initializeMapFromFileInfo(
-  container: HTMLElement,
-  fileInfo: FileInfo,
-): Promise<MapInitResult> {
+export function initializeMapFromFileInfo(container: HTMLElement, fileInfo: FileInfo): MaplibreMap {
   switch (fileInfo.kind) {
     case "stylejson":
       return initializeStyleMap(container, fileInfo.data as StyleJSON);
@@ -481,8 +412,8 @@ export async function initializeMapFromFileInfo(
     case "tilejson":
     case "mbtiles":
     case "geotiff":
-      return initializeTileJSONMap(container, fileInfo.data as TileJSON);
+      return initializeTileJSONMap(container, fileInfo);
     case "pmtiles":
-      return initializePMTilesMap(container, fileInfo.url, fileInfo.data as PMTilesInfo);
+      return initializePMTilesMap(container, fileInfo);
   }
 }

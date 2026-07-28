@@ -3,7 +3,7 @@ import type { Map as MaplibreMap } from "maplibre-gl";
 import { Hash } from "maplibre-gl";
 import { Legend } from "./legend.tsx";
 import { initializeMapFromFileInfo } from "./map.ts";
-import type { FileInfo, LayerGroup, MapState, ViewMode } from "./types.ts";
+import type { FileInfo, MapState, ViewMode } from "./types.ts";
 import { getInitialView, parseHash } from "./utils.ts";
 
 const FIT_PADDING = 50;
@@ -149,7 +149,6 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
   );
 
   const maps: MaplibreMap[] = [];
-  const legendData: (LayerGroup[] | undefined)[] = [];
   const previous = {
     mode: null as ViewMode | null,
     indices: [] as number[],
@@ -162,13 +161,14 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
     },
   };
   let swipeCleanup = null as (() => void) | null;
+  let mapsLoaded = false;
 
   // Initialize maps after DOM is mounted
-  requestAnimationFrame(async () => {
+  requestAnimationFrame(() => {
     const view = parseHash() ?? getInitialView(allFileInfos);
 
-    const results = await Promise.all(
-      allFileInfos.map((fileInfo, i) => {
+    maps.push(
+      ...allFileInfos.map((fileInfo, i) => {
         const container = viewElement.querySelector(`#map-${i}`) as HTMLElement;
         if (!container) {
           throw new Error(`Map container map-${i} not found`);
@@ -177,9 +177,6 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
         return initializeMapFromFileInfo(container, fileInfo);
       }),
     );
-
-    maps.push(...results.map((result) => result.map));
-    legendData.push(...results.map((result) => result.legendData));
 
     if (view) {
       // resolve bounds to camera just once, to be sure camera is identical for all maps
@@ -223,18 +220,15 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
       updatePosition();
     }
 
-    // Trigger initial refresh to render legends
-    this.refresh();
+    Promise.all(maps.map((map) => map.once("load"))).then(() => {
+      mapsLoaded = true;
 
-    for (const map of maps) {
-      applySettings(map, {
-        showTileBoundaries,
-        showCollisionBoxes,
-        enableRotation,
-        enablePitch,
-        enableGlobe,
-      });
-    }
+      for (const map of maps) {
+        applySettings(map, previous.settings);
+      }
+
+      this.refresh();
+    });
 
     // Sync all maps
     let syncInProgress = false;
@@ -307,15 +301,6 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
         enablePitch !== previous.settings.enablePitch ||
         enableGlobe !== previous.settings.enableGlobe
       ) {
-        for (const map of maps) {
-          applySettings(map, {
-            showTileBoundaries,
-            showCollisionBoxes,
-            enableRotation,
-            enablePitch,
-            enableGlobe,
-          });
-        }
         previous.settings = {
           showTileBoundaries,
           showCollisionBoxes,
@@ -323,12 +308,18 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
           enablePitch,
           enableGlobe,
         };
+
+        if (mapsLoaded) {
+          for (const map of maps) {
+            applySettings(map, previous.settings);
+          }
+        }
       }
 
       // Yield the same JSX structure to keep map containers stable
       viewElement = yield (
         <div class={`map-view mode-${mode}`} data-active-count={selectedIndices.length}>
-          {allFileInfos.map((_fileInfo: FileInfo, i: number) => {
+          {allFileInfos.map((fileInfo: FileInfo, i: number) => {
             const selectedPosition = selectedIndices.indexOf(i);
             const isActive = selectedPosition >= 0;
 
@@ -356,8 +347,8 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
                         ))}
                       </select>
                     )}
-                    {legendData[i] && maps[i] && (
-                      <Legend map={maps[i]} layerGroups={legendData[i]!} />
+                    {mapsLoaded && fileInfo.layers && (
+                      <Legend map={maps[i]} layers={fileInfo.layers} />
                     )}
                   </div>
                 )}

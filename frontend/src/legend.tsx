@@ -1,26 +1,22 @@
 import type { Context, Element } from "@b9g/crank";
 import type { Map as MaplibreMap } from "maplibre-gl";
-import type { LayerGroup } from "./types.ts";
+import { setDataLayerVisibility } from "./map.ts";
+import type { DataLayer } from "./types.ts";
 
 type LegendProps = {
   map: MaplibreMap;
-  layerGroups: LayerGroup[];
+  layers: DataLayer[];
 };
 
 export function* Legend(this: Context, props: LegendProps): Generator<Element> {
-  const { map, layerGroups } = props;
+  const { map, layers } = props;
 
-  const layerVisibility = new Map<string, boolean>(layerGroups.map((g) => [g.name, true]));
+  const layerVisibility = new Map<string, boolean>(layers.map((layer) => [layer.name, true]));
   let isOpen = true;
 
   const setLayerVisibility = (layerName: string, visible: boolean) => {
     layerVisibility.set(layerName, visible);
-    const layerGroup = layerGroups.find((g) => g.name === layerName);
-    if (layerGroup) {
-      for (const layerId of layerGroup.layerIds) {
-        map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
-      }
-    }
+    setDataLayerVisibility(map, layerName, visible);
   };
 
   const toggleLayer = (layerName: string, visible: boolean) => {
@@ -29,8 +25,8 @@ export function* Legend(this: Context, props: LegendProps): Generator<Element> {
   };
 
   const toggleAll = (visible: boolean) => {
-    for (const group of layerGroups) {
-      setLayerVisibility(group.name, visible);
+    for (const layer of layers) {
+      setLayerVisibility(layer.name, visible);
     }
     this.refresh();
   };
@@ -56,17 +52,17 @@ export function* Legend(this: Context, props: LegendProps): Generator<Element> {
           All
         </label>
         <hr />
-        {layerGroups.map((group) => (
+        {layers.map((layer) => (
           <label>
             <input
               type="checkbox"
-              checked={layerVisibility.get(group.name) || false}
-              style={`accent-color: ${group.color}`}
+              checked={layerVisibility.get(layer.name) || false}
+              style={`accent-color: ${layer.color}`}
               onclick={(e: Event) => {
-                toggleLayer(group.name, (e.target as HTMLInputElement).checked);
+                toggleLayer(layer.name, (e.target as HTMLInputElement).checked);
               }}
             />
-            {group.name}
+            {layer.name}
           </label>
         ))}
       </details>
