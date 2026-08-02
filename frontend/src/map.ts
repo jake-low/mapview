@@ -1,5 +1,6 @@
 import type { GeoJSON } from "geojson";
-import maplibre, { type ExpressionSpecification, type Map as MaplibreMap } from "maplibre-gl";
+import * as maplibre from "maplibre-gl";
+import { type ExpressionSpecification, type Map as MaplibreMap } from "maplibre-gl";
 import { Protocol } from "pmtiles";
 import { basemaps, setupBasemapSwitcher } from "./basemap.ts";
 import { setupContextMenu } from "./contextmenu.ts";
@@ -9,6 +10,10 @@ import { registerSearchableMap } from "./search.ts";
 import { setupStatsWidget } from "./stats.ts";
 import type { DataLayer, FileInfo, PMTilesInfo, StyleJSON, TileJSON } from "./types.ts";
 import { copyFeaturesAsGeoJSON, isRasterTiles } from "./utils.ts";
+
+// set maplibre's worker URL explicitly because the way we're invoking esbuild
+// seems to prevent the correct URL from being discovered automatically.
+maplibre.setWorkerUrl("/maplibre-gl-worker.js");
 
 // load RTL text support for Arabic, Hebrew, etc.
 maplibre.setRTLTextPlugin("/mapbox-gl-rtl-text.js", true);

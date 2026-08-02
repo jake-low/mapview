@@ -62,6 +62,12 @@ fn bundle_map() -> RawJavaScript<&'static str> {
     RawJavaScript(js)
 }
 
+#[get("/maplibre-gl-worker.js")]
+fn maplibre_worker() -> RawJavaScript<&'static str> {
+    let js = include_str!("../frontend/dist/maplibre-gl-worker.js");
+    RawJavaScript(js)
+}
+
 #[get("/mapbox-gl-rtl-text.js")]
 fn rtl_text_plugin() -> RawJavaScript<&'static str> {
     let js = include_str!("../frontend/dist/mapbox-gl-rtl-text.js");
@@ -561,6 +567,7 @@ async fn main() -> anyhow::Result<()> {
             css,
             bundle,
             bundle_map,
+            maplibre_worker,
             rtl_text_plugin,
             tiles,
             tilejson,
