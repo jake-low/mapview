@@ -1,4 +1,5 @@
 import type { Map as MaplibreMap } from "maplibre-gl";
+import { unindexFeature } from "./utils.ts";
 
 type Target = {
   map: MaplibreMap;
@@ -86,7 +87,7 @@ function applyFilter(expression: string, inputElement?: HTMLInputElement) {
       if (feature.id === undefined || !feature.source) continue;
       target.map.setFeatureState(
         { source: feature.source, sourceLayer: feature.sourceLayer, id: feature.id },
-        { match: filterFn(feature.properties || {}) },
+        { match: filterFn(unindexFeature(feature).properties) },
       );
       target.matched.push({
         source: feature.source,

@@ -9,7 +9,7 @@ import { setupFeatureHighlighting, setupHoverPopup } from "./popups.tsx";
 import { registerSearchableMap } from "./search.ts";
 import { setupStatsWidget } from "./stats.ts";
 import type { DataLayer, FileInfo, PMTilesInfo, StyleJSON, TileJSON } from "./types.ts";
-import { copyFeaturesAsGeoJSON, isRasterTiles } from "./utils.ts";
+import { copyFeaturesAsGeoJSON, INDEX_KEY, indexGeoJSON, isRasterTiles } from "./utils.ts";
 
 // set maplibre's worker URL explicitly because the way we're invoking esbuild
 // seems to prevent the correct URL from being discovered automatically.
@@ -262,7 +262,8 @@ export function initializeGeoJSONMap(container: HTMLElement, geojson: GeoJSON): 
     map.setGlobalStateProperty("searchActive", false);
     map.addSource("geojson-data", {
       type: "geojson",
-      data: geojson,
+      data: indexGeoJSON(geojson),
+      promoteId: INDEX_KEY,
     });
 
     map.addLayer({

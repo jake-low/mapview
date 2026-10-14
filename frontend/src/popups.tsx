@@ -2,6 +2,7 @@ import { type Element, Fragment } from "@b9g/crank";
 import { renderer } from "@b9g/crank/html";
 import type { MapGeoJSONFeature } from "maplibre-gl";
 import { type Map as MaplibreMap, type MapMouseEvent, Popup } from "maplibre-gl";
+import { unindexFeature } from "./utils.ts";
 
 export async function renderToString(element: Element): Promise<string> {
   return await renderer.render(element);
@@ -23,11 +24,12 @@ function FeatureHeader({
   feature: MapGeoJSONFeature;
   isOSM: boolean;
 }): Element {
+  const { id } = unindexFeature(feature);
   let idElement: Element;
-  if (feature.id === undefined) {
+  if (id === undefined) {
     idElement = <span>No ID</span>;
-  } else if (isOSM && typeof feature.id === "number") {
-    const osm = decodeOsmId(feature.id);
+  } else if (isOSM && typeof id === "number") {
+    const osm = decodeOsmId(id);
     if (osm) {
       idElement = (
         <a
@@ -39,10 +41,10 @@ function FeatureHeader({
         </a>
       );
     } else {
-      idElement = <span>ID: {String(feature.id)}</span>;
+      idElement = <span>ID: {String(id)}</span>;
     }
   } else {
-    idElement = <span>ID: {String(feature.id)}</span>;
+    idElement = <span>ID: {String(id)}</span>;
   }
 
   return (
@@ -169,7 +171,7 @@ export function FeatureInfo({
                 <LayerHeader layerName={feature.sourceLayer} color={color} />
               )}
               <FeatureHeader feature={feature} isOSM={osmSources?.has(feature.source) ?? false} />
-              <PropertiesTable properties={feature.properties || {}} />
+              <PropertiesTable properties={unindexFeature(feature).properties} />
               {showLayers && layers.length > 0 && (
                 <Fragment>
                   <h4>Rendered by:</h4>

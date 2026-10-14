@@ -1,6 +1,6 @@
 import { gpx, kml } from "@tmcw/togeojson";
 import * as turf from "@turf/turf";
-import type { GeoJSON } from "geojson";
+import type { Feature, FeatureCollection, GeoJSON } from "geojson";
 import type { MapGeoJSONFeature } from "maplibre-gl";
 import { PMTiles } from "pmtiles";
 import * as shapefile from "shapefile";
@@ -36,13 +36,60 @@ export function getCoordinatePrecision(zoom: number, lat: number): number {
   return Math.min(decimalPlaces, 8); // Cap at 8 decimal places
 }
 
+export const INDEX_KEY = "__mapview_idx";
+const ORIGINAL_ID_KEY = "__mapview_id";
+
+/**
+ * Return a copy of `geojson` as a FeatureCollection in which every feature has a unique
+ * numeric key property (named $INDEX_KEY). This is so we can use it as the `promoteId`
+ * in MapLibre. This ensures that the features in a GeoJSON file can be hovered/clicked
+ * on even if the original file had no feature IDs.
+ *
+ * If the features already had IDs, we store them in $ORIGINAL_INDEX_KEY so they can
+ * be recovered later (see unindexFeature() below)
+ */
+export function indexGeoJSON(geojson: GeoJSON): FeatureCollection {
+  const features: Feature[] =
+    geojson.type === "FeatureCollection"
+      ? geojson.features
+      : geojson.type === "Feature"
+        ? [geojson]
+        : [{ type: "Feature", geometry: geojson, properties: {} }];
+
+  return {
+    type: "FeatureCollection",
+    features: features.map(({ id, ...f }, i) => ({
+      ...f,
+      properties: {
+        ...f.properties,
+        [INDEX_KEY]: i,
+        ...(id !== undefined && { [ORIGINAL_ID_KEY]: id }),
+      },
+    })),
+  };
+}
+
+/**
+ * Get a rendered feature's original ID and properties, undoing indexGeoJSON().
+ * Features from sources that weren't indexed are returned unchanged.
+ */
+export function unindexFeature(feature: MapGeoJSONFeature): {
+  id: string | number | undefined;
+  properties: Record<string, unknown>;
+} {
+  const props = feature.properties ?? {};
+  if (!(INDEX_KEY in props)) return { id: feature.id, properties: props };
+  const { [INDEX_KEY]: _, [ORIGINAL_ID_KEY]: id, ...properties } = props;
+  return { id: id as string | number | undefined, properties };
+}
+
 export async function copyFeaturesAsGeoJSON(features: MapGeoJSONFeature[]): Promise<void> {
   const featureCollection = {
     type: "FeatureCollection" as const,
     features: features.map((f) => ({
       type: "Feature" as const,
       geometry: f.geometry,
-      properties: f.properties,
+      properties: unindexFeature(f).properties,
     })),
   };
 
