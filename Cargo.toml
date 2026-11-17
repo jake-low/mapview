@@ -1,6 +1,10 @@
 [package]
 name = "mapview"
 version = "0.1.0"
+description = "View geospatial data files in your web browser"
+authors = ["Jake Low <hello@jakelow.com>"]
+homepage = "https://github.com/jake-low/mapview"
+repository = "https://github.com/jake-low/mapview"
 edition = "2024"
 
 [dependencies]

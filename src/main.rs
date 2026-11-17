@@ -317,18 +317,18 @@ async fn files(filename: &str, config: &State<Config>) -> Result<SeekStream<'sta
             "application/octet-stream",
         ))
     } else if config.local_files.contains(filename) {
-        SeekStream::from_path(filename)
-            .map_err(|e| NotFound(format!("Failed to read file: {}", e)))
+        SeekStream::from_path(filename).map_err(|e| NotFound(format!("Failed to read file: {}", e)))
     } else {
         Err(NotFound("File not found".to_string()))
     }
 }
 
 #[derive(Parser)]
+#[command(version, about, author, styles = clap::builder::Styles::plain())]
 #[command(
-    version,
-    about = "View geospatial data files in your web browser\n\nSupported formats: GeoJSON, TileJSON, StyleJSON, PMTiles, MBTiles, GeoTIFF, GPX, KML, Shapefile (.shp or .zip)"
+    after_help = "Supported formats: GeoJSON, TileJSON, StyleJSON, PMTiles, MBTiles, GeoTIFF, GPX, KML, Shapefile (.shp or .zip)"
 )]
+#[command(help_template = "{about}\n\n{all-args}{after-help}\n\nAuthor: {author}")]
 pub struct CliArgs {
     /// Files to view (if none provided, reads from stdin)
     files: Vec<PathBuf>,
