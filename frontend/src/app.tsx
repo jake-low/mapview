@@ -1,6 +1,6 @@
 import { type Context, type Element, Fragment } from "@b9g/crank";
 import { renderer } from "@b9g/crank/dom";
-import type { AppState, FileInfo, MapCamera, MapState, URLState, ViewMode } from "./types.ts";
+import type { AppState, FileEntry, MapCamera, MapState, URLState, ViewMode } from "./types.ts";
 import { detectFileInfo, getCoordinatePrecision, shortenPaths } from "./utils.ts";
 import { getDefaultViewMode, MapView } from "./views.tsx";
 import { setupWatchMode } from "./watch.ts";
@@ -13,7 +13,7 @@ function Toolbar({
   onSelectedIndexChange,
 }: {
   state: AppState;
-  fileInfos: FileInfo[];
+  fileInfos: FileEntry[];
   onModeChange: (mode: ViewMode) => void;
   onSettingChange: (
     key: keyof Pick<
@@ -179,18 +179,17 @@ async function* App(this: Context): AsyncGenerator<Element> {
 
   document.title = `mapview ${filenames.join(" ")}`;
 
-  let allFileInfos: FileInfo[] = [];
-  try {
-    allFileInfos = await Promise.all(filenames.map((f) => detectFileInfo(f)));
-    const shortTitles = shortenPaths(filenames);
-    for (let i = 0; i < allFileInfos.length; i++) {
-      allFileInfos[i].title = shortTitles[i];
+  const results = await Promise.allSettled(filenames.map((f) => detectFileInfo(f)));
+  const shortTitles = shortenPaths(filenames);
+  const allFileInfos: FileEntry[] = results.map((result, i) => {
+    const title = shortTitles[i];
+    if (result.status === "fulfilled") {
+      return { ...result.value, title };
     }
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    yield <div class="error">Error: {message}</div>;
-    return;
-  }
+    console.error(`Failed to load ${filenames[i]}:`, result.reason);
+    const error = result.reason instanceof Error ? result.reason.message : String(result.reason);
+    return { title, error };
+  });
 
   // State that doesn't persist across refreshes (not in URL)
   let camera: MapCamera | undefined;

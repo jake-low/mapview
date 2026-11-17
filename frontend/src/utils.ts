@@ -168,7 +168,7 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
   switch (extension) {
     case "json":
     case "geojson": {
-      const res = await fetch(url);
+      const res = await fetchOk(url);
       data = await res.json();
       kind = extension === "geojson" ? "geojson" : detectJSONType(data);
       break;
@@ -176,7 +176,7 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
     case "shp": {
       const base = url.slice(0, -4);
       const [shpBuffer, dbf, prj, cpg] = await Promise.all([
-        fetch(url).then((res) => res.arrayBuffer()),
+        fetchOk(url).then((res) => res.arrayBuffer()),
         fetchSidecar(`${base}.dbf`).then((res) => res?.arrayBuffer()),
         fetchSidecar(`${base}.prj`).then((res) => res?.text()),
         fetchSidecar(`${base}.cpg`).then((res) => res?.text()),
@@ -190,7 +190,7 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
         try {
           proj4(prj);
         } catch {
-          throw new Error(`Unsupported projection in ${base}.prj: ${prj}`);
+          throw new Error(`Unsupported projection in .prj file: ${prj}`);
         }
       }
 
@@ -199,7 +199,7 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
       break;
     }
     case "zip": {
-      const res = await fetch(url);
+      const res = await fetchOk(url);
       const result = await shp(await res.arrayBuffer());
       // zips holding several shapefiles return an array of FeatureCollections
       // (one per file); we stitch them into one for display.
@@ -211,7 +211,7 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
     }
     case "gpx":
     case "kml": {
-      const res = await fetch(url);
+      const res = await fetchOk(url);
       const doc = new DOMParser().parseFromString(await res.text(), "text/xml");
       data = extension === "gpx" ? gpx(doc) : kml(doc);
       kind = "geojson";
@@ -239,11 +239,11 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
       if (!isUrl(filename)) {
         throw new Error(`Unsupported file type: ${extension}`);
       }
+      const res = await fetchOk(url);
       try {
-        const res = await fetch(url);
         data = await res.json();
       } catch {
-        throw new Error(`Could not determine file type of ${url}`);
+        throw new Error("Could not determine file type");
       }
       kind = detectJSONType(data);
     }
@@ -272,12 +272,29 @@ async function fetchSidecar(url: string): Promise<Response | undefined> {
   }
 }
 
+/** fetch(), but throws on HTTP error statuses */
+async function fetchOk(url: string): Promise<Response> {
+  let res: Response;
+  try {
+    res = await fetch(url);
+  } catch {
+    throw new Error(
+      "Network error (if this is a remote URL, the server may not allow cross-origin requests)",
+    );
+  }
+
+  if (!res.ok) {
+    const detail = res.headers.get("Content-Type")?.startsWith("text/plain")
+      ? `: ${await res.text()}`
+      : "";
+    throw new Error(`HTTP ${res.status}${detail}`);
+  }
+  return res;
+}
+
 /** MBTiles and GeoTIFF files are tiled server-side; the server exposes their TileJSON */
 async function fetchTileJSON(url: string): Promise<TileJSON> {
-  const res = await fetch(`${url}/metadata.json`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch tile metadata: ${res.status}`);
-  }
+  const res = await fetchOk(`${url}/metadata.json`);
   return res.json();
 }
 

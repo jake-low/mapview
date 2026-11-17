@@ -50,6 +50,20 @@ hr {
     height: 100%;
 }
 
+.map-container.map-error {
+    box-sizing: border-box;
+    padding: 2em;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    overflow-wrap: anywhere;
+    overflow: auto;
+    color: darkred;
+    background-color: #f4f4f4;
+}
+
 .map-controls {
     position: absolute;
     top: 10px;

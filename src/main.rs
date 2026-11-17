@@ -237,7 +237,7 @@ async fn tiles(
         }
     }
 
-    Err(NotFound(format!("Tile source not found: {}", filename)))
+    Err(NotFound("Tile source not found".to_string()))
 }
 
 #[cfg(not(feature = "gdal"))]
@@ -256,7 +256,7 @@ async fn tiles(
         return serve_mbtiles_tile(path, z, x, y, content_type).await;
     }
 
-    Err(NotFound(format!("Tile source not found: {}", filename)))
+    Err(NotFound("Tile source not found".to_string()))
 }
 
 #[cfg(feature = "gdal")]
@@ -289,7 +289,7 @@ async fn tilejson(
         }
     }
 
-    Err(NotFound(format!("Tile source not found: {}", filename)))
+    Err(NotFound("Tile source not found".to_string()))
 }
 
 #[cfg(not(feature = "gdal"))]
@@ -302,7 +302,7 @@ async fn tilejson(
         return serve_mbtiles_metadata(&filename, path, config.port).await;
     }
 
-    Err(NotFound(format!("Tile source not found: {}", filename)))
+    Err(NotFound("Tile source not found".to_string()))
 }
 
 #[get("/files/<filename>")]
@@ -318,9 +318,9 @@ async fn files(filename: &str, config: &State<Config>) -> Result<SeekStream<'sta
         ))
     } else if config.local_files.contains(filename) {
         SeekStream::from_path(filename)
-            .map_err(|e| NotFound(format!("Failed to read {}: {}", filename, e)))
+            .map_err(|e| NotFound(format!("Failed to read file: {}", e)))
     } else {
-        Err(NotFound(format!("File not found: {}", filename)))
+        Err(NotFound("File not found".to_string()))
     }
 }
 

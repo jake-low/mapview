@@ -30,6 +30,13 @@ export type FileInfo = {
   layers?: DataLayer[];
 };
 
+export type FileError = {
+  title: string;
+  error: string;
+};
+
+export type FileEntry = FileInfo | FileError;
+
 export type TileJSON = {
   tilejson: string;
   tiles: Array<string>;

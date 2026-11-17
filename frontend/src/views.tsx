@@ -3,7 +3,7 @@ import type { Map as MaplibreMap } from "maplibre-gl";
 import { Hash } from "maplibre-gl";
 import { Legend } from "./legend.tsx";
 import { initializeMapFromFileInfo } from "./map.ts";
-import type { FileInfo, MapState, ViewMode } from "./types.ts";
+import type { FileEntry, FileInfo, MapState, ViewMode } from "./types.ts";
 import { getInitialView, parseHash } from "./utils.ts";
 
 const FIT_PADDING = 50;
@@ -24,7 +24,7 @@ type MapSettings = {
 
 type MapViewProps = {
   mode: ViewMode;
-  allFileInfos: FileInfo[];
+  allFileInfos: FileEntry[];
   selectedIndices: number[];
   onIndexChange: (position: number, index: number) => void;
   onMapMove?: (state: MapState) => void;
@@ -124,6 +124,23 @@ function setupSwipeControl(selectedIndices: number[]) {
   };
 }
 
+function isLoaded(fileInfo: FileEntry): fileInfo is FileInfo {
+  return !("error" in fileInfo);
+}
+
+function renderContainer(fileInfo: FileEntry, i: number): Element {
+  if (isLoaded(fileInfo)) {
+    return <div class="map-container" id={`map-${i}`} />;
+  }
+
+  return (
+    <div class="map-container map-error" id={`map-${i}`}>
+      <strong>Failed to load {fileInfo.title}</strong>
+      <p>{fileInfo.error}</p>
+    </div>
+  );
+}
+
 export async function* MapView(this: Context, props: MapViewProps): AsyncGenerator<Element> {
   const {
     allFileInfos,
@@ -140,15 +157,14 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
   // First render to create DOM containers
   let viewElement: HTMLElement = yield (
     <div class="map-view">
-      {allFileInfos.map((_fileInfo: FileInfo, i: number) => (
-        <div class="map-wrapper">
-          <div class="map-container" id={`map-${i}`} />
-        </div>
+      {allFileInfos.map((fileInfo: FileEntry, i: number) => (
+        <div class="map-wrapper">{renderContainer(fileInfo, i)}</div>
       ))}
     </div>
   );
 
-  const maps: MaplibreMap[] = [];
+  // keyed by index into allFileInfos; files that failed to load have no map
+  const maps = new Map<number, MaplibreMap>();
   const previous = {
     mode: null as ViewMode | null,
     indices: [] as number[],
@@ -165,29 +181,32 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
 
   // Initialize maps after DOM is mounted
   requestAnimationFrame(() => {
-    const view = parseHash() ?? getInitialView(allFileInfos);
+    const view = parseHash() ?? getInitialView(allFileInfos.filter(isLoaded));
 
-    maps.push(
-      ...allFileInfos.map((fileInfo, i) => {
-        const container = viewElement.querySelector(`#map-${i}`) as HTMLElement;
-        if (!container) {
-          throw new Error(`Map container map-${i} not found`);
-        }
+    for (const [i, fileInfo] of allFileInfos.entries()) {
+      if (!isLoaded(fileInfo)) continue;
 
-        return initializeMapFromFileInfo(container, fileInfo);
-      }),
-    );
+      const container = viewElement.querySelector(`#map-${i}`) as HTMLElement;
+      if (!container) {
+        throw new Error(`Map container map-${i} not found`);
+      }
+
+      maps.set(i, initializeMapFromFileInfo(container, fileInfo));
+    }
+
+    const [primaryMap] = maps.values();
+    if (!primaryMap) return; // every file failed to load
 
     if (view) {
       // resolve bounds to camera just once, to be sure camera is identical for all maps
-      const firstMap = maps[props.selectedIndices[0]];
+      const firstMap = maps.get(props.selectedIndices[0]) ?? primaryMap;
       const camera = Array.isArray(view)
         ? firstMap.cameraForBounds(view, { padding: FIT_PADDING })
         : // MapLibre doesn't like it if a MapCamera contains `bearing: undefined` or similar
           Object.fromEntries(Object.entries(view).filter(([_, v]) => v !== undefined));
 
       if (camera) {
-        for (const map of maps) {
+        for (const map of maps.values()) {
           map.jumpTo(camera);
         }
       }
@@ -196,14 +215,14 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
     // The URL hash and toolbar position info are bound to the state of the first
     // map, even if that map is not on screen. This works because all maps are always
     // kept in sync, even when they are not all visible.
-    new Hash().addTo(maps[0]);
+    new Hash().addTo(primaryMap);
     if (onMapMove) {
       const updatePosition = () => {
-        const center = maps[0].getCenter();
-        const bounds = maps[0].getBounds();
-        const zoom = maps[0].getZoom();
-        const bearing = maps[0].getBearing();
-        const pitch = maps[0].getPitch();
+        const center = primaryMap.getCenter();
+        const bounds = primaryMap.getBounds();
+        const zoom = primaryMap.getZoom();
+        const bearing = primaryMap.getBearing();
+        const pitch = primaryMap.getPitch();
 
         onMapMove({
           camera: {
@@ -215,15 +234,15 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
           bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
         });
       };
-      maps[0].on("move", updatePosition);
-      maps[0].on("zoom", updatePosition);
+      primaryMap.on("move", updatePosition);
+      primaryMap.on("zoom", updatePosition);
       updatePosition();
     }
 
-    Promise.all(maps.map((map) => map.once("load"))).then(() => {
+    Promise.all([...maps.values()].map((map) => map.once("load"))).then(() => {
       mapsLoaded = true;
 
-      for (const map of maps) {
+      for (const map of maps.values()) {
         applySettings(map, previous.settings);
       }
 
@@ -276,7 +295,7 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
         swipeCleanup = null;
 
         // Clear clip styles from all maps
-        for (let i = 0; i < maps.length; i++) {
+        for (let i = 0; i < allFileInfos.length; i++) {
           const container = viewElement.querySelector(`#map-${i}`) as HTMLElement;
           if (container) {
             container.style.clipPath = "";
@@ -310,7 +329,7 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
         };
 
         if (mapsLoaded) {
-          for (const map of maps) {
+          for (const map of maps.values()) {
             applySettings(map, previous.settings);
           }
         }
@@ -319,16 +338,18 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
       // Yield the same JSX structure to keep map containers stable
       viewElement = yield (
         <div class={`map-view mode-${mode}`} data-active-count={selectedIndices.length}>
-          {allFileInfos.map((fileInfo: FileInfo, i: number) => {
+          {allFileInfos.map((fileInfo: FileEntry, i: number) => {
             const selectedPosition = selectedIndices.indexOf(i);
             const isActive = selectedPosition >= 0;
+            const map = maps.get(i);
+            const layers = isLoaded(fileInfo) ? fileInfo.layers : undefined;
 
             return (
               <div
                 class={`map-wrapper ${isActive ? "active" : "inactive"}`}
                 data-position={isActive ? selectedPosition : undefined}
               >
-                <div class="map-container" id={`map-${i}`} />
+                {renderContainer(fileInfo, i)}
                 {isActive && (
                   <div class="map-controls">
                     {allFileInfos.length > 1 && (
@@ -340,16 +361,14 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
                           )
                         }
                       >
-                        {allFileInfos.map((info: FileInfo, j: number) => (
+                        {allFileInfos.map((info: FileEntry, j: number) => (
                           <option value={j} selected={j === i}>
                             {info.title}
                           </option>
                         ))}
                       </select>
                     )}
-                    {mapsLoaded && fileInfo.layers && (
-                      <Legend map={maps[i]} layers={fileInfo.layers} />
-                    )}
+                    {mapsLoaded && map && layers && <Legend map={map} layers={layers} />}
                   </div>
                 )}
               </div>
@@ -360,7 +379,7 @@ export async function* MapView(this: Context, props: MapViewProps): AsyncGenerat
       );
     }
   } finally {
-    for (const map of maps) {
+    for (const map of maps.values()) {
       map.remove();
     }
     swipeCleanup?.();
