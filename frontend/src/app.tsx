@@ -10,7 +10,6 @@ function Toolbar({
   fileInfos,
   onModeChange,
   onSettingChange,
-  onSelectedIndexChange,
 }: {
   state: AppState;
   fileInfos: FileEntry[];
@@ -27,7 +26,6 @@ function Toolbar({
     >,
     value: boolean,
   ) => void;
-  onSelectedIndexChange: (position: number, index: number) => void;
 }): Element {
   const showModePicker = fileInfos.length > 1;
 
@@ -51,23 +49,6 @@ function Toolbar({
               <option value="tile" selected={state.mode === "tile"}>
                 Tile
               </option>
-            </select>
-          </label>
-        )}
-
-        {showModePicker && state.mode === "single" && (
-          <label>
-            File:
-            <select
-              onchange={(e: Event) =>
-                onSelectedIndexChange(0, parseInt((e.target as HTMLSelectElement).value, 10))
-              }
-            >
-              {fileInfos.map((info, i) => (
-                <option value={i} selected={i === state.selectedIndices[0]}>
-                  {info.title}
-                </option>
-              ))}
             </select>
           </label>
         )}
@@ -331,7 +312,6 @@ async function* App(this: Context): AsyncGenerator<Element> {
           fileInfos={allFileInfos}
           onModeChange={onModeChange}
           onSettingChange={onSettingChange}
-          onSelectedIndexChange={onSelectedIndexChange}
         />
         <button class="unfullscreen-button" onclick={() => onSettingChange("fullscreen", false)}>
           Exit Fullscreen
