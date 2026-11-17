@@ -3,7 +3,8 @@ import * as turf from "@turf/turf";
 import type { Feature, FeatureCollection, GeoJSON } from "geojson";
 import type { MapGeoJSONFeature } from "maplibre-gl";
 import { PMTiles } from "pmtiles";
-import * as shapefile from "shapefile";
+import proj4 from "proj4";
+import shp from "shpjs";
 import {
   type Bounds,
   type DataLayer,
@@ -173,24 +174,38 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
       break;
     }
     case "shp": {
-      const base = filename.slice(0, -4);
-      const baseUrl = isUrl(filename) ? base : `/files/${encodeURIComponent(base)}`;
+      const base = url.slice(0, -4);
+      const [shpBuffer, dbf, prj, cpg] = await Promise.all([
+        fetch(url).then((res) => res.arrayBuffer()),
+        fetchSidecar(`${base}.dbf`).then((res) => res?.arrayBuffer()),
+        fetchSidecar(`${base}.prj`).then((res) => res?.text()),
+        fetchSidecar(`${base}.cpg`).then((res) => res?.text()),
+      ]);
 
-      const shpRes = await fetch(`${baseUrl}.shp`);
-      const shpBuffer = await shpRes.arrayBuffer();
-
-      // Try to fetch .dbf file, but it's optional
-      let dbfBuffer: ArrayBuffer | undefined;
-      try {
-        const dbfRes = await fetch(`${baseUrl}.dbf`);
-        if (dbfRes.ok) {
-          dbfBuffer = await dbfRes.arrayBuffer();
+      if (prj) {
+        // shpjs suppresses errors from proj4, so it silently ignores an unknown
+        // projection and leaves coordinates unprojected (which usually results
+        // in a broken map). to avoid confusing the user, we'll call proj4 on
+        // the prj ourselves and throw a user-facing error if it throws.
+        try {
+          proj4(prj);
+        } catch {
+          throw new Error(`Unsupported projection in ${base}.prj: ${prj}`);
         }
-      } catch {
-        // .dbf file is optional, continue without it
       }
 
-      data = await shapefile.read(shpBuffer, dbfBuffer);
+      data = await shp({ shp: shpBuffer, dbf, prj, cpg });
+      kind = "shapefile";
+      break;
+    }
+    case "zip": {
+      const res = await fetch(url);
+      const result = await shp(await res.arrayBuffer());
+      // zips holding several shapefiles return an array of FeatureCollections
+      // (one per file); we stitch them into one for display.
+      data = Array.isArray(result)
+        ? { type: "FeatureCollection", features: result.flatMap((fc) => fc.features) }
+        : result;
       kind = "shapefile";
       break;
     }
@@ -244,13 +259,26 @@ export async function detectFileInfo(filename: string): Promise<FileInfo> {
   };
 }
 
+/**
+ * Fetch an optional shapefile sidecar file (.dbf, .prj, etc), returning undefined
+ * if it's missing.
+ */
+async function fetchSidecar(url: string): Promise<Response | undefined> {
+  try {
+    const res = await fetch(url);
+    return res.ok ? res : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** MBTiles and GeoTIFF files are tiled server-side; the server exposes their TileJSON */
 async function fetchTileJSON(url: string): Promise<TileJSON> {
-  const response = await fetch(`${url}/metadata.json`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch tile metadata: ${response.status}`);
+  const res = await fetch(`${url}/metadata.json`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch tile metadata: ${res.status}`);
   }
-  return response.json();
+  return res.json();
 }
 
 function isValidBounds(bounds: Bounds): boolean {

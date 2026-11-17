@@ -327,7 +327,7 @@ async fn files(filename: &str, config: &State<Config>) -> Result<SeekStream<'sta
 #[derive(Parser)]
 #[command(
     version,
-    about = "View geospatial data files in your web browser\n\nSupported formats: GeoJSON, TileJSON, StyleJSON, PMTiles, MBTiles, GeoTIFF, GPX, KML, Shapefile"
+    about = "View geospatial data files in your web browser\n\nSupported formats: GeoJSON, TileJSON, StyleJSON, PMTiles, MBTiles, GeoTIFF, GPX, KML, Shapefile (.shp or .zip)"
 )]
 pub struct CliArgs {
     /// Files to view (if none provided, reads from stdin)
@@ -415,11 +415,13 @@ impl TryFrom<CliArgs> for Config {
                         mbtiles_files.insert(path.clone(), pool);
                     }
 
-                    // If this is a .shp file, also serve the .dbf file if it exists
+                    // Shapefiles keep attributes, projection, and encoding in sidecar files
                     if lower.ends_with(".shp") {
-                        let dbf_path = file_path.with_extension("dbf");
-                        if dbf_path.exists() {
-                            local_files.insert(dbf_path.to_string_lossy().to_string());
+                        for ext in ["dbf", "prj", "cpg"] {
+                            let sidecar = file_path.with_extension(ext);
+                            if sidecar.exists() {
+                                local_files.insert(sidecar.to_string_lossy().to_string());
+                            }
                         }
                     }
                 }

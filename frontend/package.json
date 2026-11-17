@@ -12,12 +12,12 @@
     "@turf/turf": "^7.3.5",
     "maplibre-gl": "^6.14.0",
     "pmtiles": "^4.4.1",
-    "shapefile": "^0.6.6"
+    "proj4": "^2.23.0",
+    "shpjs": "^6.2.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.3",
     "@types/geojson": "^7946.0.16",
-    "@types/shapefile": "^0.6.4",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2"
   },
