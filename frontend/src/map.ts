@@ -1,6 +1,6 @@
 import type { GeoJSON } from "geojson";
 import * as maplibre from "maplibre-gl";
-import { type ExpressionSpecification, type Map as MaplibreMap } from "maplibre-gl";
+import type { ExpressionSpecification, Map as MaplibreMap } from "maplibre-gl";
 import { Protocol } from "pmtiles";
 import { basemaps, setupBasemapSwitcher } from "./basemap.ts";
 import { setupContextMenu } from "./contextmenu.ts";
