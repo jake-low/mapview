@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use anyhow::{self, Context, bail};
 use clap::Parser;
-use include_dir::{Dir, include_dir};
 
 use rocket::State;
 use rocket::http::ContentType;
@@ -23,8 +22,6 @@ mod mbtiles;
 
 #[cfg(feature = "gdal")]
 mod tiler;
-
-static FONTS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/fonts/pbf");
 
 struct Config {
     /// contents of files read from stdin, keyed by synthetic filename
@@ -66,31 +63,6 @@ fn bundle_map() -> RawJavaScript<&'static str> {
 fn maplibre_worker() -> RawJavaScript<&'static str> {
     let js = include_str!("../frontend/dist/maplibre-gl-worker.js");
     RawJavaScript(js)
-}
-
-#[get("/mapbox-gl-rtl-text.js")]
-fn rtl_text_plugin() -> RawJavaScript<&'static str> {
-    let js = include_str!("../frontend/dist/mapbox-gl-rtl-text.js");
-    RawJavaScript(js)
-}
-
-#[derive(Responder)]
-struct FontGlyph {
-    content: &'static [u8],
-    content_type: ContentType,
-}
-
-#[get("/fonts/<fontstack>/<range>")]
-fn fonts(fontstack: &str, range: &str) -> Result<FontGlyph, NotFound> {
-    let path = format!("{}/{}", fontstack, range);
-
-    FONTS_DIR
-        .get_file(&path)
-        .map(|file| FontGlyph {
-            content: file.contents(),
-            content_type: ContentType::new("application", "x-protobuf"),
-        })
-        .ok_or_else(|| NotFound(format!("Font not found: {}", path)))
 }
 
 #[derive(Responder)]
@@ -563,12 +535,10 @@ async fn main() -> anyhow::Result<()> {
         routes![
             index,
             files,
-            fonts,
             css,
             bundle,
             bundle_map,
             maplibre_worker,
-            rtl_text_plugin,
             tiles,
             tilejson,
             ws // the websocket route is always mounted; without --watch it just never sends anything

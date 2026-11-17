@@ -15,19 +15,16 @@ import { copyFeaturesAsGeoJSON, INDEX_KEY, indexGeoJSON, isRasterTiles } from ".
 // seems to prevent the correct URL from being discovered automatically.
 maplibre.setWorkerUrl("/maplibre-gl-worker.js");
 
-// load RTL text support for Arabic, Hebrew, etc.
-maplibre.setRTLTextPlugin("/mapbox-gl-rtl-text.js", true);
-
 // register the pmtiles:// protocol once for all PMTiles sources
 maplibre.addProtocol("pmtiles", new Protocol().tile);
 
-const TEXT_FONT = ["Noto Sans"];
+// we're not using a glyphs URL in wireframe stylesheets, so maplibre treats
+// the font list below as a CSS font-family list.
+const TEXT_FONT = ["sans-serif"];
+const TEXT_SIZE = 10;
 const TEXT_HALO_COLOR = "#000b16";
 const TEXT_HALO_WIDTH = 1;
 const TEXT_HALO_BLUR = 0;
-const TEXT_SIZE_POINT = 9;
-const TEXT_SIZE_LINE = 8;
-const TEXT_SIZE_POLYGON = 10;
 
 const DIMMED_FILL_COLOR = "#323b44";
 const DIMMED_LINE_COLOR = "#19232d";
@@ -171,7 +168,7 @@ function addVectorLayers(map: MaplibreMap, sourceName: string, layers: DataLayer
       layout: {
         "text-field": ["get", "name"],
         "text-font": TEXT_FONT,
-        "text-size": TEXT_SIZE_POINT,
+        "text-size": TEXT_SIZE,
         "text-offset": [0, -0.5],
         "text-anchor": "bottom",
       },
@@ -187,7 +184,7 @@ function addVectorLayers(map: MaplibreMap, sourceName: string, layers: DataLayer
       layout: {
         "text-field": ["get", "name"],
         "text-font": TEXT_FONT,
-        "text-size": TEXT_SIZE_LINE,
+        "text-size": TEXT_SIZE,
         "symbol-placement": "line",
         "text-rotation-alignment": "map",
       },
@@ -203,7 +200,7 @@ function addVectorLayers(map: MaplibreMap, sourceName: string, layers: DataLayer
       layout: {
         "text-field": ["get", "name"],
         "text-font": TEXT_FONT,
-        "text-size": TEXT_SIZE_POLYGON,
+        "text-size": TEXT_SIZE,
         "text-max-angle": 85,
         "text-offset": [0, 1],
         "text-rotation-alignment": "map",
@@ -342,10 +339,6 @@ function initializeTileMap(container: HTMLElement, config: TileMapConfig): Mapli
           },
         ],
   };
-
-  if (!config.isRaster) {
-    style.glyphs = "/fonts/{fontstack}/{range}.pbf";
-  }
 
   const map = new maplibre.Map({ container, style: style as any, maxZoom: 20 });
 

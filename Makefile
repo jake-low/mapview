@@ -1,10 +1,6 @@
-.PHONY: all fonts frontend bin
+.PHONY: all frontend bin
 
-all: fonts frontend bin
-
-fonts:
-	mkdir -p fonts/pbf
-	build_pbf_glyphs --overwrite --combinations fonts/combinations.json fonts/ fonts/pbf/
+all: frontend bin
 
 frontend:
 	cd frontend && npm run build
@@ -12,5 +8,5 @@ frontend:
 bin:
 	cargo build
 
-install: fonts frontend
+install: frontend
 	cargo install --path .
